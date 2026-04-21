@@ -9,6 +9,7 @@ type User struct {
 	Email     string    `gorm:"unique;column:email" json:"email"`
 	Password  string    `gorm:"column:password" json:"-"`
 	Username  string    `gorm:"column:username" json:"username"`
+	Role      string    `gorm:"column:role;default:student" json:"role"`
 	CreatedAt time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 	UpdatedAt time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 }

@@ -77,6 +77,15 @@ func main() {
 		protected.GET("/training/session/:id", handlers.GetTrainingSession)
 	}
 
+	// Admin-only routes (JWT + admin role check)
+	admin := api.Group("/admin")
+	admin.Use(middleware.JWTMiddleware(), middleware.AdminMiddleware())
+	{
+		admin.GET("/dashboard", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "Admin dashboard", "status": "ok"})
+		})
+	}
+
 	log.Println("Starting Gin server on :8080")
 	if err := r.Run(":8080"); err != nil {
 		log.Fatal("Server failed to start:", err)

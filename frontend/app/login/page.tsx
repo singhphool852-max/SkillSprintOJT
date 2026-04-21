@@ -13,6 +13,8 @@ import {
   Swords,
   UserPlus,
   Zap,
+  GraduationCap,
+  ShieldCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/hooks/useAuth"
@@ -43,6 +45,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [username, setUsername] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [role, setRole] = useState<"student" | "admin">("student")
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
@@ -68,7 +71,9 @@ export default function LoginPage() {
     const endpoint = mode === "login" ? "http://localhost:8080/api/auth/login" : "http://localhost:8080/api/auth/signup"
 
     try {
-      const bodyPayload = mode === "signup" ? { email, password, username } : { email, password }
+      const bodyPayload = mode === "signup"
+        ? { email, password, username, role }
+        : { email, password, role }
       
       const res = await fetch(endpoint, {
         method: "POST",
@@ -91,13 +96,19 @@ export default function LoginPage() {
         const loginRes = await fetch("http://localhost:8080/api/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password, role }),
           credentials: "include",
         })
         
         if (loginRes.ok) {
+          const loginData = await loginRes.json()
           await checkAuth()
-          router.push("/")
+          // Role-based redirect after signup
+          if (loginData.role === "admin") {
+            router.push("/admin/dashboard")
+          } else {
+            router.push("/")
+          }
           return
         } else {
           setMode("login")
@@ -107,9 +118,13 @@ export default function LoginPage() {
         }
       }
 
-      // Login successful — sync state and redirect to hero
+      // Login successful — role-based redirect
       await checkAuth()
-      router.push("/")
+      if (data.role === "admin") {
+        router.push("/admin/dashboard")
+      } else {
+        router.push("/")
+      }
     } catch (err) {
       console.error(err)
       setError("Connection failed. Ensure backend is running at :8080")
@@ -224,6 +239,42 @@ export default function LoginPage() {
 
               {/* Form */}
               <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-5">
+                {/* Role Selector */}
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
+                    <Shield className="h-3 w-3 text-neon-cyan/60" />
+                    SELECT ROLE
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      id="role-student"
+                      type="button"
+                      onClick={() => setRole("student")}
+                      className={`group flex items-center justify-center gap-2 px-4 py-3 border font-mono text-xs tracking-wider transition-all duration-200 ${
+                        role === "student"
+                          ? "border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.15)]"
+                          : "border-panel-border bg-deep-bg/60 text-muted-foreground hover:border-neon-cyan/30 hover:text-foreground"
+                      }`}
+                    >
+                      <GraduationCap className={`h-4 w-4 transition-colors ${role === "student" ? "text-neon-cyan" : "text-muted-foreground/60"}`} />
+                      STUDENT
+                    </button>
+                    <button
+                      id="role-admin"
+                      type="button"
+                      onClick={() => setRole("admin")}
+                      className={`group flex items-center justify-center gap-2 px-4 py-3 border font-mono text-xs tracking-wider transition-all duration-200 ${
+                        role === "admin"
+                          ? "border-neon-amber bg-neon-amber/10 text-neon-amber shadow-[0_0_15px_rgba(255,170,0,0.15)]"
+                          : "border-panel-border bg-deep-bg/60 text-muted-foreground hover:border-neon-amber/30 hover:text-foreground"
+                      }`}
+                    >
+                      <ShieldCheck className={`h-4 w-4 transition-colors ${role === "admin" ? "text-neon-amber" : "text-muted-foreground/60"}`} />
+                      ADMIN
+                    </button>
+                  </div>
+                </div>
+
                 {/* Email */}
                 <div className="flex flex-col gap-2">
                   <label className="flex items-center gap-2 font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
@@ -323,7 +374,11 @@ export default function LoginPage() {
                   id="auth-submit"
                   type="submit"
                   disabled={loading}
-                  className="group flex items-center justify-center gap-3 bg-neon-cyan/90 hover:bg-neon-cyan px-6 py-3.5 font-mono text-xs font-bold tracking-widest text-deep-bg transition-all hover:shadow-[0_0_30px_rgba(0,240,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`group flex items-center justify-center gap-3 px-6 py-3.5 font-mono text-xs font-bold tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                    role === "admin"
+                      ? "bg-neon-amber/90 hover:bg-neon-amber text-deep-bg hover:shadow-[0_0_30px_rgba(255,170,0,0.3)]"
+                      : "bg-neon-cyan/90 hover:bg-neon-cyan text-deep-bg hover:shadow-[0_0_30px_rgba(0,240,255,0.3)]"
+                  }`}
                 >
                   {loading ? (
                     <>
@@ -332,7 +387,7 @@ export default function LoginPage() {
                     </>
                   ) : mode === "login" ? (
                     <>
-                      ENTER ARENA
+                      {role === "admin" ? "ADMIN LOGIN" : "ENTER ARENA"}
                       <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </>
                   ) : (

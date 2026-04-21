@@ -5,8 +5,13 @@ import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "../hooks/useAuth"
 import { Loader2 } from "lucide-react"
 
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth()
+interface ProtectedRouteProps {
+  children: React.ReactNode
+  requiredRole?: "student" | "admin"
+}
+
+export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+  const { user, isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -14,7 +19,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (!isLoading && !isAuthenticated) {
       router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
     }
-  }, [isLoading, isAuthenticated, router, pathname])
+    // If authenticated but role doesn't match, redirect to login
+    if (!isLoading && isAuthenticated && requiredRole && user?.role !== requiredRole) {
+      router.push("/login")
+    }
+  }, [isLoading, isAuthenticated, router, pathname, requiredRole, user])
 
   if (isLoading) {
     return (
@@ -28,6 +37,10 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
+    return null // Will redirect in useEffect
+  }
+
+  if (requiredRole && user?.role !== requiredRole) {
     return null // Will redirect in useEffect
   }
 

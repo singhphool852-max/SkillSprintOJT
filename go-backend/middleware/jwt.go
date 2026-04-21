@@ -20,6 +20,7 @@ func init() {
 type SessionPayload struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
+	Role  string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -61,6 +62,21 @@ func JWTMiddleware() gin.HandlerFunc {
 
 		c.Set("userID", claims.ID)
 		c.Set("userEmail", claims.Email)
+		c.Set("userRole", claims.Role)
+		c.Next()
+	}
+}
+
+// AdminMiddleware checks that the authenticated user has the "admin" role.
+// Must be used AFTER JWTMiddleware.
+func AdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists || role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

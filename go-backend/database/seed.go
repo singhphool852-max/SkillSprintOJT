@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func SeedDB() {
@@ -59,7 +60,7 @@ func SeedDB() {
 		DB.Create(&models.Option{ID: uuid.New().String(), QuestionID: qn.ID, Text: "No", IsCorrect: false})
 	}
 
-	// Make sure a dummy user exists
+	// Make sure a dummy student user exists
 	var userCount int64
 	DB.Model(&models.User{}).Where("username = ?", "RIVAL_X").Count(&userCount)
 	if userCount == 0 {
@@ -68,11 +69,37 @@ func SeedDB() {
 			Email:     "dummy@skillsprint.io",
 			Password:  "password",
 			Username:  "RIVAL_X",
+			Role:      "student",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
 		DB.Create(&dummyUser)
 	}
 
+	// Make sure a seeded admin user exists
+	var adminCount int64
+	DB.Model(&models.User{}).Where("email = ?", "admin@skillsprint.io").Count(&adminCount)
+	if adminCount == 0 {
+		// Using bcrypt hash of "admin123"
+		hashedPwd, _ := bcryptHash("admin123")
+		adminUser := models.User{
+			ID:        uuid.New().String(),
+			Email:     "admin@skillsprint.io",
+			Password:  hashedPwd,
+			Username:  "ADMIN",
+			Role:      "admin",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		DB.Create(&adminUser)
+		log.Println("Seeded admin user: admin@skillsprint.io / admin123")
+	}
+
 	log.Println("Seed complete.")
 }
+
+func bcryptHash(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	return string(bytes), err
+}
+
