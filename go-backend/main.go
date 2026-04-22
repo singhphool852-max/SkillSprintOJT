@@ -81,9 +81,26 @@ func main() {
 	admin := api.Group("/admin")
 	admin.Use(middleware.JWTMiddleware(), middleware.AdminMiddleware())
 	{
-		admin.GET("/dashboard", func(c *gin.Context) {
-			c.JSON(200, gin.H{"message": "Admin dashboard", "status": "ok"})
-		})
+		// Dashboard stats
+		admin.GET("/stats", handlers.AdminGetStats)
+
+		// Student management
+		admin.GET("/students", handlers.AdminListStudents)
+		admin.POST("/students", handlers.AdminCreateStudent)
+		admin.DELETE("/students/:id", handlers.AdminDeleteStudent)
+
+		// Arena management
+		admin.GET("/arenas", handlers.AdminListArenas)
+		admin.POST("/arenas", handlers.AdminCreateArena)
+		admin.DELETE("/arenas/:id", handlers.AdminDeleteArena)
+
+		// Question management
+		admin.GET("/arenas/:id/questions", handlers.AdminGetArenaQuestions)
+		admin.POST("/arenas/:id/questions", handlers.AdminAddQuestion)
+		admin.DELETE("/questions/:id", handlers.AdminDeleteQuestion)
+
+		// Categories
+		admin.GET("/categories", handlers.AdminListCategories)
 	}
 
 	log.Println("Starting Gin server on :8080")
