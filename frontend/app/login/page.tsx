@@ -37,7 +37,7 @@ function HudCorner({ className }: { className?: string }) {
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { checkAuth, isAuthenticated, isLoading: authLoading } = useAuth()
+  const { checkAuth, user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [mode, setMode] = useState<"login" | "signup">(
     searchParams.get("mode") === "signup" ? "signup" : "login"
   )
@@ -49,22 +49,30 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
+  const [loginInProgress, setLoginInProgress] = useState(false)
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      router.push("/")
+    if (!authLoading && isAuthenticated && !loginInProgress) {
+      // Already logged in user visiting /login — redirect based on role
+      if (user?.role === "admin") {
+        router.push("/admin/dashboard")
+      } else {
+        router.push("/")
+      }
     }
-  }, [authLoading, isAuthenticated, router])
+  }, [authLoading, isAuthenticated, user, router, loginInProgress])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError("")
     setSuccess("")
     setLoading(true)
+    setLoginInProgress(true)
 
     if (mode === "signup" && password !== confirmPassword) {
       setError("Passwords do not match")
       setLoading(false)
+      setLoginInProgress(false)
       return
     }
 
@@ -87,6 +95,7 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data.error || "Something went wrong")
         setLoading(false)
+        setLoginInProgress(false)
         return
       }
 
@@ -114,6 +123,7 @@ export default function LoginPage() {
           setMode("login")
           setSuccess("Account created. Please login.")
           setLoading(false)
+          setLoginInProgress(false)
           return
         }
       }
@@ -129,6 +139,7 @@ export default function LoginPage() {
       console.error(err)
       setError("Connection failed. Ensure backend is running at :8080")
       setLoading(false)
+      setLoginInProgress(false)
     }
   }
 
