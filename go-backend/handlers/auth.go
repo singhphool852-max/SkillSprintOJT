@@ -17,12 +17,14 @@ import (
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	Role     string `json:"role"`
 }
 
 type SignupRequest struct {
 	Email    string `json:"email" binding:"required"`
 	Password string `json:"password" binding:"required"`
 	Username string `json:"username" binding:"required"`
+	Role     string `json:"role"`
 }
 
 func LoginHandler(c *gin.Context) {
@@ -30,6 +32,11 @@ func LoginHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email and password are required"})
 		return
+	}
+
+	// Default role to "student" if not provided
+	if req.Role == "" {
+		req.Role = "student"
 	}
 
 	var user models.User
@@ -44,11 +51,18 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	// Generate JWT
+	// Check role match
+	if user.Role != req.Role {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials for selected role"})
+		return
+	}
+
+	// Generate JWT with role
 	expirationTime := time.Now().Add(7 * 24 * time.Hour)
 	claims := &middleware.SessionPayload{
 		ID:    user.ID,
 		Email: user.Email,
+		Role:  user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -69,6 +83,7 @@ func LoginHandler(c *gin.Context) {
 		"id":       user.ID,
 		"email":    user.Email,
 		"username": user.Username,
+		"role":     user.Role,
 	})
 }
 
@@ -76,6 +91,17 @@ func SignupHandler(c *gin.Context) {
 	var req SignupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username, Email and password are required"})
+		return
+	}
+
+	// Default role to "student" if not provided
+	if req.Role == "" {
+		req.Role = "student"
+	}
+
+	// Validate role value
+	if req.Role != "student" && req.Role != "admin" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Role must be 'student' or 'admin'"})
 		return
 	}
 
@@ -96,6 +122,7 @@ func SignupHandler(c *gin.Context) {
 		Email:    req.Email,
 		Username: req.Username,
 		Password: string(hashed),
+		Role:     req.Role,
 	}
 
 	if err := database.DB.Create(&newUser).Error; err != nil {
@@ -135,6 +162,7 @@ func MeHandler(c *gin.Context) {
 		"id":             user.ID,
 		"email":          user.Email,
 		"username":       user.Username,
+		"role":           user.Role,
 		"stats":          stats,
 		"recentAttempts": recentAttempts,
 	})
