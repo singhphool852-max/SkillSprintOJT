@@ -7,7 +7,6 @@ export interface User {
   id: string
   username: string
   email: string
-  role: "student" | "admin"
 }
 
 export interface AuthContextType {
@@ -34,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (res.ok) {
         const data = await res.json()
-        setUser({ id: data.id, email: data.email, username: data.username, role: data.role || "student" })
+        setUser({ id: data.id, email: data.email, username: data.username })
       } else {
         setUser(null)
       }

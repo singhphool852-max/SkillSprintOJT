@@ -25,7 +25,6 @@ type Arena struct {
 	UpdatedAt       time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
 	Category QuizCategory `gorm:"foreignKey:CategoryID" json:"category"`
-	Quizzes  []Quiz        `gorm:"foreignKey:ArenaID" json:"quizzes,omitempty"`
 }
 
 type Quiz struct {
@@ -37,8 +36,6 @@ type Quiz struct {
 	IsActive   bool      `gorm:"column:isActive" json:"isActive"`
 	CreatedAt  time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 	UpdatedAt  time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
-
-	Questions []Question `gorm:"foreignKey:QuizID" json:"questions,omitempty"`
 }
 
 type Question struct {
