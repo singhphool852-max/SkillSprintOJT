@@ -88,11 +88,17 @@ func main() {
 		auth.POST("/login", handlers.LoginHandler)
 		auth.POST("/signup", handlers.SignupHandler)
 		auth.POST("/google", handlers.GoogleLoginHandler)
+		auth.POST("/google/login", handlers.GoogleLoginHandler) // Alias for user suggestion
 		auth.POST("/logout", handlers.LogoutHandler)
 
 		// Protected me route
 		auth.GET("/me", middleware.JWTMiddleware(), handlers.MeHandler)
 	}
+
+	// Root-level aliases (Failsafe for mismatched frontend paths)
+	r.POST("/google", handlers.GoogleLoginHandler)
+	r.POST("/login", handlers.LoginHandler)
+	r.GET("/me", middleware.JWTMiddleware(), handlers.MeHandler)
 
 	// Public Arena Routes
 	api.GET("/arenas", handlers.GetArenas)
@@ -167,6 +173,10 @@ func main() {
 		admin.GET("/analytics", handlers.GetAdminDashboardStats)
 		admin.GET("/dashboard/recent", handlers.GetRecentActivity)
 	}
+
+	// Admin Root Aliases (Failsafe)
+	api.GET("/admin/analytics", middleware.JWTMiddleware(), middleware.AdminOnly(), handlers.GetAdminDashboardStats)
+
 
 	// Arena Test Routes (JWT required)
 	arena := api.Group("/arena")
