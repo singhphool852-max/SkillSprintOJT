@@ -49,9 +49,13 @@ func GetAdminDashboardStats(c *gin.Context) {
 	var totalQuestions int64
 	database.DB.Model(&models.TestQuestion{}).Count(&totalQuestions)
 
+	var activeTests int64
+	database.DB.Model(&models.Test{}).Where("isActive = ?", true).Count(&activeTests)
+
 	c.JSON(http.StatusOK, gin.H{
 		"totalTests":       totalTests,
 		"publishedTests":   publishedTests,
+		"activeTests":      activeTests,
 		"totalUsers":       totalUsers,
 		"adminUsers":       adminUsers,
 		"regularUsers":     totalUsers - adminUsers,
