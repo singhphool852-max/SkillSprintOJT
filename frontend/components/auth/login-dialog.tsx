@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Lock, LogIn, Shield, Swords, User, X } from "lucide-react"
+import { API_URL } from "@/lib/api-config"
 
 function HudCorner({ className }: { className?: string }) {
   return (
@@ -39,7 +40,7 @@ export function LoginDialog({ open, onClose }: LoginDialogProps) {
     setLoading(true)
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),

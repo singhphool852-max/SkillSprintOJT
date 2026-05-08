@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { TrainingSolver } from "@/components/train/training-solver"
 import { Loader2, ShieldAlert, ArrowLeft, RefreshCcw, Info, ShieldCheck } from "lucide-react"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 export default function TrainingPlayPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise)
@@ -33,7 +33,7 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
 
       if (isUUID) {
         // PATH A: Retrieve existing session by UUID
-        const res = await fetch(`${API_BASE}/api/train/session/${id}`, {
+        const res = await fetch(`${API_URL}/api/train/session/${id}`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
           credentials: "include"
@@ -57,7 +57,7 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
         apiData = await res.json();
       } else {
         // PATH B: Create new session from topic name
-        const res = await fetch(`${API_BASE}/api/train/session`, {
+        const res = await fetch(`${API_URL}/api/train/session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
