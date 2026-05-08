@@ -43,14 +43,12 @@ func main() {
 	config := cors.Config{
 		AllowOrigins: []string{
 			"http://localhost:3000",
-			"https://skill-sprint-ojt.vercel.app",
-			"https://skill-sprint-ojt-git-main-ipsitapp8s-projects.vercel.app",
+			"https://main.dbpan1tvwu74i.amplifyapp.com",
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length", "Set-Cookie"},
 		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
 	}
 	r.Use(cors.New(config))
 
