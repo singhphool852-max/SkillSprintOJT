@@ -18,7 +18,7 @@ import {
   XCircle,
   AlertTriangle,
 } from "lucide-react"
-import { API_BASE, WS_BASE } from "@/lib/api-config"
+import { API_URL, WS_BASE } from "@/lib/api-config"
 
 // Removed hardcoded API constant
 
@@ -173,7 +173,7 @@ function TestList({ onJoined }: { onJoined: (attemptId: string, testId: string) 
   useEffect(() => {
     async function fetchTests() {
       try {
-        const res = await fetch(`${API_BASE}/api/arena/tests`, { credentials: "include" })
+        const res = await fetch(`${API_URL}/api/arena/tests`, { credentials: "include" })
         if (res.ok) setTests(await res.json())
       } catch (e) {
         console.error("Failed to fetch tests:", e)
@@ -187,7 +187,7 @@ function TestList({ onJoined }: { onJoined: (attemptId: string, testId: string) 
   async function handleJoin(testId: string) {
     setJoiningId(testId)
     try {
-      const res = await fetch(`${API_BASE}/api/arena/tests/${testId}/join`, {
+      const res = await fetch(`${API_URL}/api/arena/tests/${testId}/join`, {
         method: "POST",
         credentials: "include",
       })
@@ -366,7 +366,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
   // Fetch attempt data
   const fetchAttempt = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/arena/attempts/${attemptId}`, { credentials: "include" })
+      const res = await fetch(`${API_URL}/api/arena/attempts/${attemptId}`, { credentials: "include" })
       if (!res.ok) {
         onExit()
         return
@@ -514,7 +514,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
     if (draftSaveRef.current) clearTimeout(draftSaveRef.current)
     draftSaveRef.current = setTimeout(async () => {
       try {
-        await fetch(`${API_BASE}/api/arena/submissions/draft`, {
+        await fetch(`${API_URL}/api/arena/submissions/draft`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -540,7 +540,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
     })
 
     try {
-      await fetch(`${API_BASE}/api/arena/submissions/mcq`, {
+      await fetch(`${API_URL}/api/arena/submissions/mcq`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -560,7 +560,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
     setSubmitResult(null)
     setCompileError(null)
     try {
-      const res = await fetch(`${API_BASE}/api/arena/submissions/run`, {
+      const res = await fetch(`${API_URL}/api/arena/submissions/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -592,7 +592,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
     setRunResults(null)
     setCompileError(null)
     try {
-      const res = await fetch(`${API_BASE}/api/arena/submissions/code`, {
+      const res = await fetch(`${API_URL}/api/arena/submissions/code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -630,7 +630,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
   // ── Submit entire attempt ──
   async function handleSubmitAttempt() {
     try {
-      const res = await fetch(`${API_BASE}/api/arena/attempts/${attemptId}/submit`, {
+      const res = await fetch(`${API_URL}/api/arena/attempts/${attemptId}/submit`, {
         method: "POST",
         credentials: "include",
       })
@@ -1095,3 +1095,4 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
     </div>
   )
 }
+

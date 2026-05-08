@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { PerformanceChart } from "./performance-chart"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 interface DashboardData {
   stats: {
@@ -87,14 +87,14 @@ export function DashboardContent() {
     const fetchDashboard = async () => {
       try {
         // Fetch user info
-        const meRes = await fetch(`${API_BASE}/api/auth/me`, { credentials: "include" })
+        const meRes = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" })
         if (meRes.ok) {
           const meData = await meRes.json()
           setUser({ username: meData.username, email: meData.email })
         }
 
         // Fetch full dashboard
-        const res = await fetch(`${API_BASE}/api/dashboard/full`, { credentials: "include" })
+        const res = await fetch(`${API_URL}/api/dashboard/full`, { credentials: "include" })
         if (res.ok) {
           const json = await res.json()
           setData(json)
@@ -456,3 +456,4 @@ function StatCard({
     </div>
   )
 }
+

@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { Loader2, Zap, Brain, Target, Timer, UserCheck } from "lucide-react"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 export default function SessionInitPage() {
   return (
@@ -35,7 +35,7 @@ function SessionInitContent() {
       try {
         // 1. Fetch available arenas
         setStatus(`SEARCHING FOR ${topic.toUpperCase()} BATTLEFIELD...`)
-        const res = await fetch(`${API_BASE}/api/arenas`)
+        const res = await fetch(`${API_URL}/api/arenas`)
         if (!res.ok) throw new Error("COULD NOT CONNECT TO ARENA SERVER")
         
         const arenas = await res.json()
@@ -144,3 +144,4 @@ function SessionInitContent() {
     </ProtectedRoute>
   )
 }
+

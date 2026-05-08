@@ -22,7 +22,7 @@ import {
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { getTrainingHistory, recommendDifficulty } from "@/lib/training-history"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 const topTopics = [
   {
@@ -138,7 +138,7 @@ export default function TrainPage() {
     setAiError(null);
     setAiLoading(true);
 
-    const url = `${API_BASE}/api/training/generate`;
+    const url = `${API_URL}/api/training/generate`;
 
     const payload = { 
       topic: aiTopic.toLowerCase(),
@@ -483,3 +483,4 @@ export default function TrainPage() {
     </ProtectedRoute>
   )
 }
+
