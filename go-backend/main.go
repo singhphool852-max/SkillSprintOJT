@@ -174,9 +174,6 @@ func main() {
 		admin.GET("/dashboard/recent", handlers.GetRecentActivity)
 	}
 
-	// Admin Root Aliases (Failsafe)
-	api.GET("/admin/analytics", middleware.JWTMiddleware(), middleware.AdminOnly(), handlers.GetAdminDashboardStats)
-
 
 	// Arena Test Routes (JWT required)
 	arena := api.Group("/arena")
