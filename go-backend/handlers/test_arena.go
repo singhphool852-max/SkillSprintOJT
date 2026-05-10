@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -406,7 +405,7 @@ func RunCode(c *gin.Context) {
 			compileOutput = execResult.CompileOut
 		}
 
-		pass := strings.TrimSpace(actual) == strings.TrimSpace(tc.ExpectedOutput)
+		pass := judge.Normalize(actual) == judge.Normalize(tc.ExpectedOutput)
 		results = append(results, CaseResult{
 			Input:      tc.Input,
 			Expected:   tc.ExpectedOutput,
@@ -516,7 +515,7 @@ func SubmitCode(c *gin.Context) {
 			compileOutput = execResult.CompileOut
 		}
 
-		pass := strings.TrimSpace(actual) == strings.TrimSpace(tc.ExpectedOutput)
+		pass := judge.Normalize(actual) == judge.Normalize(tc.ExpectedOutput)
 		if pass {
 			passedCount++
 		}

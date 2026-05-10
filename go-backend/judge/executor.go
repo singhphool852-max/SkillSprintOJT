@@ -14,7 +14,6 @@ import (
 
 // ──────────────────────────────────────────────
 // Executor — pluggable code execution interface.
-// The backend always programs against this interface.
 //
 // Implementations:
 //   - LocalExecutor:  runs on same machine (dev/small setups)
@@ -27,19 +26,18 @@ import (
 // Executor defines how code is run against testcases.
 type Executor interface {
 	Run(code, language, input string, timeLimitMs int) (ExecutionResult, error)
-	// SupportedLanguages returns languages this executor can handle.
 	SupportedLanguages() []LanguageInfo
 }
 
 // ExecutionResult holds the output from a single code execution.
 type ExecutionResult struct {
-	Output      string `json:"output"`
-	ExitCode    int    `json:"exitCode"`
-	TimedOut    bool   `json:"timedOut"`
-	Error       string `json:"error"`       // empty means success
-	ErrorType   string `json:"errorType"`   // compilation_error, runtime_error, time_limit_exceeded
-	CompileOut  string `json:"compileOut"`   // compilation output (errors/warnings)
-	DurationMs  int64  `json:"durationMs"`  // wall-clock execution time
+	Output     string `json:"output"`
+	ExitCode   int    `json:"exitCode"`
+	TimedOut   bool   `json:"timedOut"`
+	Error      string `json:"error"`      // empty means success
+	ErrorType  string `json:"errorType"`  // compilation_error, runtime_error, time_limit_exceeded
+	CompileOut string `json:"compileOut"` // compilation output (errors/warnings)
+	DurationMs int64  `json:"durationMs"` // wall-clock execution time
 }
 
 // LanguageInfo describes a supported language.
@@ -47,19 +45,16 @@ type LanguageInfo struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Version  string `json:"version"`
-	Template string `json:"template"` // default starter code
+	Template string `json:"template"`
 }
 
 // LocalExecutor runs code as a local subprocess with timeout enforcement.
-// Supports Python 3, C++, Java, JavaScript (Node), and Go.
 type LocalExecutor struct{}
 
-// NewLocalExecutor returns a new subprocess-based executor.
 func NewLocalExecutor() *LocalExecutor {
 	return &LocalExecutor{}
 }
 
-// SupportedLanguages returns all languages this executor can handle.
 func (e *LocalExecutor) SupportedLanguages() []LanguageInfo {
 	return []LanguageInfo{
 		{ID: "python", Name: "Python 3", Version: "3.x", Template: "import sys\n\ndef solve():\n    # Read input\n    line = input()\n    # Your solution here\n    print(line)\n\nsolve()\n"},
@@ -70,25 +65,49 @@ func (e *LocalExecutor) SupportedLanguages() []LanguageInfo {
 	}
 }
 
+// normalizeInput strips \r from input so programs always see clean \n line endings.
+func normalizeInput(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "\n")
+}
+
+// normalizeOutput strips \r from output so comparison is consistent.
+func normalizeOutput(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "\n")
+}
+
+// compile runs a compilation command with a generous timeout.
+// Returns (compileOutput, error). If error is non-nil, compilation failed.
+func compile(args []string, timeoutSec int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
 // Run executes the given code with the given input and time limit.
-// It writes code to a temp file, compiles if needed, and runs with stdin piped.
+// Each call uses its own isolated temp directory for concurrency safety.
+// The execution timeout only covers the run phase, NOT compilation.
 func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (ExecutionResult, error) {
 	if timeLimitMs <= 0 {
 		timeLimitMs = 2000
 	}
 
+	// Each execution gets its own temp dir — safe for concurrent goroutines
 	tmpDir, err := os.MkdirTemp("", "judge-*")
 	if err != nil {
 		return ExecutionResult{Error: "failed to create temp dir", ErrorType: "internal_error"}, err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	timeout := time.Duration(timeLimitMs) * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	// Normalize input: strip \r so programs always see clean \n
+	input = normalizeInput(input)
 
-	var cmd *exec.Cmd
-	startTime := time.Now()
+	// Determine what to run based on language.
+	// For compiled languages: compile first (outside the execution timeout),
+	// then run the binary within the timeout.
+	var runArgs []string // command + args for the run phase
+	var runDir string    // working directory for the run phase
 
 	switch strings.ToLower(language) {
 	case "python", "python3", "py":
@@ -96,7 +115,7 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		cmd = exec.CommandContext(ctx, "python3", srcPath)
+		runArgs = []string{"python3", srcPath}
 
 	case "cpp", "c++":
 		srcPath := filepath.Join(tmpDir, "solution.cpp")
@@ -104,25 +123,20 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		// Compile
-		compileCtx, compileCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer compileCancel()
-		compile := exec.CommandContext(compileCtx, "g++", "-o", binPath, srcPath, "-std=c++17")
-		compileOut, compileErr := compile.CombinedOutput()
-		if compileErr != nil {
+		compOut, compErr := compile([]string{"g++", "-O2", "-o", binPath, srcPath, "-std=c++17"}, 15)
+		if compErr != nil {
 			return ExecutionResult{
-				Output:     string(compileOut),
-				CompileOut: string(compileOut),
+				Output:     compOut,
+				CompileOut: compOut,
 				ExitCode:   1,
 				Error:      "compilation_error",
 				ErrorType:  "compilation_error",
-				DurationMs: time.Since(startTime).Milliseconds(),
-			}, nil // Not an internal error — return compilation failure as result
+			}, nil
 		}
-		cmd = exec.CommandContext(ctx, binPath)
+		runArgs = []string{binPath}
 
 	case "java":
-		// Detect class name from code (e.g., "public class Main" → "Main")
+		// Detect class name from code
 		className := "Solution"
 		re := regexp.MustCompile(`public\s+class\s+(\w+)`)
 		if m := re.FindStringSubmatch(code); len(m) > 1 {
@@ -132,54 +146,43 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		// Compile
-		compileCtx, compileCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer compileCancel()
-		compile := exec.CommandContext(compileCtx, "javac", srcPath)
-		compileOut, compileErr := compile.CombinedOutput()
-		if compileErr != nil {
+		compOut, compErr := compile([]string{"javac", srcPath}, 15)
+		if compErr != nil {
 			return ExecutionResult{
-				Output:     string(compileOut),
-				CompileOut: string(compileOut),
+				Output:     compOut,
+				CompileOut: compOut,
 				ExitCode:   1,
 				Error:      "compilation_error",
 				ErrorType:  "compilation_error",
-				DurationMs: time.Since(startTime).Milliseconds(),
 			}, nil
 		}
-		cmd = exec.CommandContext(ctx, "java", "-cp", tmpDir, className)
+		runArgs = []string{"java", "-cp", tmpDir, className}
 
 	case "javascript", "js", "node":
 		srcPath := filepath.Join(tmpDir, "solution.js")
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		cmd = exec.CommandContext(ctx, "node", srcPath)
+		runArgs = []string{"node", srcPath}
 
 	case "go", "golang":
 		srcPath := filepath.Join(tmpDir, "main.go")
-		binPath := filepath.Join(tmpDir, "solution_go")
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		// Two-phase: compile with generous timeout, then run with user time limit
-		compileCtx, compileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer compileCancel()
-		compile := exec.CommandContext(compileCtx, "go", "build", "-o", binPath, srcPath)
-		compileOut, compileErr := compile.CombinedOutput()
-		if compileErr != nil {
+		binPath := filepath.Join(tmpDir, "solution_go")
+		compOut, compErr := compile([]string{"go", "build", "-o", binPath, srcPath}, 30)
+		if compErr != nil {
 			return ExecutionResult{
-				Output:     string(compileOut),
-				CompileOut: string(compileOut),
+				Output:     compOut,
+				CompileOut: compOut,
 				ExitCode:   1,
 				Error:      "compilation_error",
 				ErrorType:  "compilation_error",
-				DurationMs: time.Since(startTime).Milliseconds(),
 			}, nil
 		}
-		// Reset start time to exclude compilation from execution time
-		startTime = time.Now()
-		cmd = exec.CommandContext(ctx, binPath)
+		runArgs = []string{binPath}
+		runDir = tmpDir
 
 	default:
 		return ExecutionResult{
@@ -188,21 +191,33 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		}, fmt.Errorf("unsupported language: %s", language)
 	}
 
-	// Pipe stdin
+	// ── Run phase: create a FRESH timeout context that starts NOW ──
+	// This ensures compilation time is NOT counted against the user's time limit.
+	timeout := time.Duration(timeLimitMs) * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, runArgs[0], runArgs[1:]...)
+	if runDir != "" {
+		cmd.Dir = runDir
+	}
+
+	// Pipe test input to stdin
 	cmd.Stdin = strings.NewReader(input)
 
-	// Capture stdout and stderr separately — critical for correct output comparison.
-	// CombinedOutput mixes stderr warnings/info into stdout, causing wrong verdicts.
+	// Capture stdout and stderr SEPARATELY — only stdout is used for comparison
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
+	startTime := time.Now()
 	runErr := cmd.Run()
-	stdout := stdoutBuf.String()
-	stderr := stderrBuf.String()
 	duration := time.Since(startTime).Milliseconds()
 
-	// Check for timeout
+	stdout := normalizeOutput(stdoutBuf.String())
+	stderr := stderrBuf.String()
+
+	// Check for timeout FIRST
 	if ctx.Err() == context.DeadlineExceeded {
 		return ExecutionResult{
 			Output:     stdout,
@@ -216,8 +231,8 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 	}
 
 	// Check for runtime error
-	exitCode := 0
 	if runErr != nil {
+		exitCode := 0
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		}
@@ -239,7 +254,7 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		}, nil
 	}
 
-	// Success — return only stdout (stderr is ignored for output comparison)
+	// Success — return only stdout (stderr is NOT mixed into comparison output)
 	return ExecutionResult{
 		Output:     stdout,
 		ExitCode:   0,

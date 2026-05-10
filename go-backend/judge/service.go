@@ -1,6 +1,7 @@
 package judge
 
 import (
+	"strings"
 	"sync"
 )
 
@@ -101,48 +102,26 @@ type TestCaseResult struct {
 	ExecResult ExecutionResult `json:"execResult"`
 }
 
-// trimCompare checks if two strings match after trimming whitespace.
+// trimCompare normalizes both strings and compares line-by-line.
+// Strips \r, trims trailing whitespace per line, and removes trailing blank lines.
 func trimCompare(a, b string) bool {
-	return trim(a) == trim(b)
+	return Normalize(a) == Normalize(b)
 }
 
-func trim(s string) string {
-	// Trim trailing whitespace from each line and the whole string
-	lines := splitLines(s)
+// Normalize prepares a string for comparison:
+// 1. Replace \r\n with \n and strip stray \r
+// 2. Trim trailing whitespace from each line
+// 3. Remove trailing empty lines
+func Normalize(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "")
+	lines := strings.Split(s, "\n")
 	for i, l := range lines {
-		lines[i] = trimRight(l)
+		lines[i] = strings.TrimRight(l, " \t")
 	}
 	// Remove trailing empty lines
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	result := ""
-	for i, l := range lines {
-		if i > 0 {
-			result += "\n"
-		}
-		result += l
-	}
-	return result
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	lines = append(lines, s[start:])
-	return lines
-}
-
-func trimRight(s string) string {
-	end := len(s)
-	for end > 0 && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r') {
-		end--
-	}
-	return s[:end]
+	return strings.Join(lines, "\n")
 }
