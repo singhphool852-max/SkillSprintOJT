@@ -158,6 +158,17 @@ func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
 
 	log.Printf("[AUTO-SUBMIT] SUCCESS: attempt=%s test=%s score=%d", freshAttempt.ID, test.ID, totalScore)
 
+	// Refresh attempt with committed values for post-commit side effects
+	freshAttempt.Score = totalScore
+	freshAttempt.TotalQuestions = len(questions)
+	freshAttempt.TimeTaken = int(time.Since(freshAttempt.StartedAt).Seconds())
+	freshAttempt.SubmittedAt = submittedAt
+	freshAttempt.IsAutoSubmitted = true
+
+	// Post-commit side effects: persist result + track wrong answers
+	computeAndSaveResult(freshAttempt)
+	extractWrongQuestions(freshAttempt)
+
 	// Notify via WebSocket (after commit, non-blocking)
 	if ArenaSessionHub != nil {
 		ArenaSessionHub.BroadcastAutoSubmit(freshAttempt.ID, totalScore)

@@ -132,6 +132,7 @@ func JoinTest(c *gin.Context) {
 		ID:        uuid.New().String(),
 		UserID:    userID.(string),
 		TestID:    testID,
+		Mode:      "arena", // ranked, single attempt per user per test
 		StartedAt: time.Now(),
 	}
 
@@ -711,6 +712,19 @@ func SubmitTestAttempt(c *gin.Context) {
 	}
 
 	log.Printf("[SUBMIT-ATTEMPT] SUCCESS: attemptID=%s score=%d auto=%v", attempt.ID, totalScore, isAutoSubmitted)
+
+	// Refresh attempt with committed values for post-commit side effects
+	attempt.Score = totalScore
+	attempt.TotalQuestions = len(questions)
+	attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
+	attempt.SubmittedAt = submittedAt
+	attempt.IsAutoSubmitted = isAutoSubmitted
+
+	// Post-commit side effects (async, non-blocking)
+	go func() {
+		computeAndSaveResult(attempt) // persist TestResult
+		extractWrongQuestions(attempt) // track wrong answers + update topic stats
+	}()
 
 	// Broadcast updated leaderboard (after commit, non-blocking)
 	broadcastLeaderboard(attempt.TestID)

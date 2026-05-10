@@ -45,6 +45,10 @@ func ConnectDB() {
 		&models.TrainingQuestion{},
 		&models.TrainingSession{},
 		&models.Upload{},
+
+		// Wrong question tracking & analytics
+		&models.UserWrongQuestion{},
+		&models.UserTopicStats{},
 	)
 	if err != nil {
 		log.Println("Database migration error (ignoring if table already populated):", err)
@@ -69,8 +73,27 @@ func ConnectDB() {
 		"ALTER TABLE test_attempts ADD COLUMN totalQuestions integer DEFAULT 0",
 		"ALTER TABLE test_attempts ADD COLUMN timeTaken integer DEFAULT 0",
 		"ALTER TABLE test_attempts ADD COLUMN violationCount integer DEFAULT 0",
-		// Composite unique index — prevents duplicate (userId, testId) pairs
+		"ALTER TABLE test_attempts ADD COLUMN mode text DEFAULT 'arena'",
+		// Composite unique index — prevents duplicate (userId, testId) pairs for arena mode
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_user_test ON test_attempts(userId, testId)",
+
+		// Soft delete columns on tests table
+		"ALTER TABLE tests ADD COLUMN deletedAt datetime",
+		"ALTER TABLE tests ADD COLUMN deletedBy text DEFAULT ''",
+
+		// Topic + time fields on test_results
+		"ALTER TABLE test_results ADD COLUMN topicId text DEFAULT ''",
+		"ALTER TABLE test_results ADD COLUMN topicName text DEFAULT ''",
+		"ALTER TABLE test_results ADD COLUMN timeTaken integer DEFAULT 0",
+
+		// ── Performance indexes for leaderboard + analytics scalability ──
+		"CREATE INDEX IF NOT EXISTS idx_attempt_test_score ON test_attempts(testId, score DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_attempt_user ON test_attempts(userId)",
+		"CREATE INDEX IF NOT EXISTS idx_submissions_attempt ON test_submissions(attemptId)",
+		"CREATE INDEX IF NOT EXISTS idx_wrong_questions_user ON user_wrong_questions(userId)",
+		"CREATE INDEX IF NOT EXISTS idx_wrong_questions_topic ON user_wrong_questions(userId, topicId)",
+		"CREATE INDEX IF NOT EXISTS idx_test_results_user ON test_results(userId)",
+		"CREATE INDEX IF NOT EXISTS idx_tests_deleted ON tests(deletedAt)",
 	}
 	for _, m := range migrations {
 		if err := database.Exec(m).Error; err != nil {
