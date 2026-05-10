@@ -85,7 +85,14 @@ func CreateTest(c *gin.Context) {
 // ──────────────────────────────────────────────
 func ListTests(c *gin.Context) {
 	var tests []models.Test
-	if err := database.DB.Preload("Creator").Preload("Topic").Preload("Questions").Order("createdAt desc").Find(&tests).Error; err != nil {
+	query := database.DB.Preload("Creator").Preload("Topic").Preload("Questions").Order("createdAt desc")
+
+	// By default, filter out soft-deleted tests
+	if c.Query("includeDeleted") != "true" {
+		query = query.Where("deletedAt IS NULL")
+	}
+
+	if err := query.Find(&tests).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tests"})
 		return
 	}
@@ -364,10 +371,69 @@ func UpdateTest(c *gin.Context) {
 }
 
 // ──────────────────────────────────────────────
-// DeleteTest → DELETE /api/admin/tests/:id
-// Cascade deletes all questions, options, test cases, and attempts.
+// SoftDeleteTest → DELETE /api/admin/tests/:id
+// Soft-deletes a test (sets deletedAt). Does NOT destroy data.
+// Historical attempts, results, and submissions are preserved.
 // ──────────────────────────────────────────────
-func DeleteTest(c *gin.Context) {
+func SoftDeleteTest(c *gin.Context) {
+	testID := c.Param("id")
+	userID, _ := c.Get("userID")
+
+	var test models.Test
+	if err := database.DB.Where("id = ?", testID).First(&test).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Test not found"})
+		return
+	}
+
+	if test.DeletedAt != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test is already deleted"})
+		return
+	}
+
+	now := time.Now()
+	result := database.DB.Model(&models.Test{}).Where("id = ?", testID).Updates(map[string]interface{}{
+		"deletedAt":   now,
+		"deletedBy":   userID,
+		"isActive":    false,
+		"isPublished": false,
+	})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete test"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Test soft-deleted", "testId": testID, "deletedAt": now})
+}
+
+// ──────────────────────────────────────────────
+// RestoreTest → POST /api/admin/tests/:id/restore
+// Undoes a soft delete — clears deletedAt/deletedBy.
+// ──────────────────────────────────────────────
+func RestoreTest(c *gin.Context) {
+	testID := c.Param("id")
+
+	var test models.Test
+	if err := database.DB.Where("id = ?", testID).First(&test).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Test not found"})
+		return
+	}
+
+	if test.DeletedAt == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test is not deleted"})
+		return
+	}
+
+	// Clear soft delete fields (use raw SQL because GORM won't set NULL via Updates)
+	database.DB.Exec("UPDATE tests SET deletedAt = NULL, deletedBy = '' WHERE id = ?", testID)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Test restored", "testId": testID})
+}
+
+// ──────────────────────────────────────────────
+// PermanentDeleteTest → DELETE /api/admin/tests/:id/permanent
+// Hard deletes a test and ALL associated data. IRREVERSIBLE.
+// ──────────────────────────────────────────────
+func PermanentDeleteTest(c *gin.Context) {
 	testID := c.Param("id")
 
 	var test models.Test
@@ -389,14 +455,26 @@ func DeleteTest(c *gin.Context) {
 		tx.Where("testId = ?", testID).Delete(&models.TestQuestion{})
 	}
 
-	tx.Where("testId = ?", testID).Delete(&models.TestSubmission{})
+	// Get attempt IDs for cascade
+	var attemptIDs []string
+	tx.Model(&models.TestAttempt{}).Where("testId = ?", testID).Pluck("id", &attemptIDs)
+
+	if len(attemptIDs) > 0 {
+		tx.Where("attemptId IN ?", attemptIDs).Delete(&models.TestSubmission{})
+		tx.Where("attemptId IN ?", attemptIDs).Delete(&models.UserWrongQuestion{})
+	}
+
 	tx.Where("testId = ?", testID).Delete(&models.TestAttempt{})
 	tx.Where("testId = ?", testID).Delete(&models.TestResult{})
+	tx.Where("testId = ?", testID).Delete(&models.TestViolation{})
 	tx.Delete(&test)
 
-	tx.Commit()
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to permanently delete test"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Test deleted", "testId": testID})
+	c.JSON(http.StatusOK, gin.H{"message": "Test permanently deleted", "testId": testID})
 }
 
 // ──────────────────────────────────────────────

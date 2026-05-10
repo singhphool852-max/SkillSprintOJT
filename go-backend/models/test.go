@@ -8,18 +8,20 @@ import (
 // Test — a timed assessment created by an admin
 // ──────────────────────────────────────────────
 type Test struct {
-	ID              string    `gorm:"primaryKey;column:id" json:"id"`
-	Title           string    `gorm:"column:title" json:"title"`
-	Description     string    `gorm:"column:description" json:"description"`
-	TopicID         string    `gorm:"column:topicId" json:"topicId,omitempty"`
-	StartTime       time.Time `gorm:"column:startTime" json:"startTime"`
-	DurationSeconds int       `gorm:"column:durationSeconds" json:"durationSeconds"`
-	MaxScore        int       `gorm:"column:maxScore" json:"maxScore"`
-	IsPublished     bool      `gorm:"column:isPublished;default:false" json:"isPublished"`
-	IsActive        bool      `gorm:"column:isActive;default:false" json:"isActive"`
-	CreatedBy       string    `gorm:"column:createdBy" json:"createdBy"`
-	CreatedAt       time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
-	UpdatedAt       time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+	ID              string     `gorm:"primaryKey;column:id" json:"id"`
+	Title           string     `gorm:"column:title" json:"title"`
+	Description     string     `gorm:"column:description" json:"description"`
+	TopicID         string     `gorm:"column:topicId" json:"topicId,omitempty"`
+	StartTime       time.Time  `gorm:"column:startTime" json:"startTime"`
+	DurationSeconds int        `gorm:"column:durationSeconds" json:"durationSeconds"`
+	MaxScore        int        `gorm:"column:maxScore" json:"maxScore"`
+	IsPublished     bool       `gorm:"column:isPublished;default:false" json:"isPublished"`
+	IsActive        bool       `gorm:"column:isActive;default:false" json:"isActive"`
+	CreatedBy       string     `gorm:"column:createdBy" json:"createdBy"`
+	CreatedAt       time.Time  `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt       time.Time  `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+	DeletedAt       *time.Time `gorm:"column:deletedAt;index" json:"deletedAt,omitempty"`
+	DeletedBy       string     `gorm:"column:deletedBy" json:"deletedBy,omitempty"`
 
 	Creator   User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	Topic     *Topic         `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
@@ -105,6 +107,7 @@ type TestAttempt struct {
 	ID              string    `gorm:"primaryKey;column:id" json:"id"`
 	UserID          string    `gorm:"column:userId;uniqueIndex:idx_user_test" json:"userId"`
 	TestID          string    `gorm:"column:testId;uniqueIndex:idx_user_test" json:"testId"`
+	Mode            string    `gorm:"column:mode;default:arena" json:"mode"` // "arena" (ranked, single) | "practice" | "train"
 	StartedAt       time.Time `gorm:"column:startedAt" json:"startedAt"`
 	SubmittedAt     time.Time `gorm:"column:submittedAt" json:"submittedAt"`
 	Score           int       `gorm:"column:score" json:"score"`

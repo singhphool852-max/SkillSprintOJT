@@ -133,6 +133,13 @@ func main() {
 		protected.GET("/results", handlers.ListUserResults)
 		protected.GET("/results/:attemptId", handlers.GetTestResult)
 
+		// Wrong question tracking & weak-topic analysis
+		protected.GET("/training/wrong-questions", handlers.GetUserWrongQuestions)
+		protected.GET("/training/wrong-questions/summary", handlers.GetWrongQuestionSummary)
+		protected.GET("/training/weak-topics", handlers.GetUserWeakTopics)
+		protected.POST("/training/wrong-questions/:id/review", handlers.MarkQuestionReviewed)
+		protected.POST("/training/wrong-questions/:id/master", handlers.MarkQuestionMastered)
+
 		// Training module additions
 		protected.POST("/train/upload-notes", handlers.UploadNotes)
 		protected.GET("/training/session/:id", handlers.GetTrainingSession)
@@ -154,7 +161,9 @@ func main() {
 		admin.GET("/tests", handlers.ListTests)
 		admin.GET("/tests/:id", handlers.GetTestDetail)
 		admin.PUT("/tests/:id", handlers.UpdateTest)
-		admin.DELETE("/tests/:id", handlers.DeleteTest)
+		admin.DELETE("/tests/:id", handlers.SoftDeleteTest)
+		admin.POST("/tests/:id/restore", handlers.RestoreTest)
+		admin.DELETE("/tests/:id/permanent", handlers.PermanentDeleteTest)
 		admin.PATCH("/tests/:id/publish", handlers.PublishTest)
 		admin.PATCH("/tests/:id/activate", handlers.ActivateTest)
 
@@ -172,6 +181,10 @@ func main() {
 		admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats)
 		admin.GET("/analytics", handlers.GetAdminDashboardStats)
 		admin.GET("/dashboard/recent", handlers.GetRecentActivity)
+
+		// Test-specific analytics & attempt inspection
+		admin.GET("/tests/:id/attempts", handlers.GetTestAttemptsList)
+		admin.GET("/tests/:id/analytics", handlers.GetTestAnalytics)
 	}
 
 
