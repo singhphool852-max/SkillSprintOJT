@@ -1,11 +1,13 @@
 package judge
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -120,7 +122,13 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		cmd = exec.CommandContext(ctx, binPath)
 
 	case "java":
-		srcPath := filepath.Join(tmpDir, "Solution.java")
+		// Detect class name from code (e.g., "public class Main" → "Main")
+		className := "Solution"
+		re := regexp.MustCompile(`public\s+class\s+(\w+)`)
+		if m := re.FindStringSubmatch(code); len(m) > 1 {
+			className = m[1]
+		}
+		srcPath := filepath.Join(tmpDir, className+".java")
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
@@ -139,7 +147,7 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 				DurationMs: time.Since(startTime).Milliseconds(),
 			}, nil
 		}
-		cmd = exec.CommandContext(ctx, "java", "-cp", tmpDir, "Solution")
+		cmd = exec.CommandContext(ctx, "java", "-cp", tmpDir, className)
 
 	case "javascript", "js", "node":
 		srcPath := filepath.Join(tmpDir, "solution.js")
@@ -150,11 +158,28 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 
 	case "go", "golang":
 		srcPath := filepath.Join(tmpDir, "main.go")
+		binPath := filepath.Join(tmpDir, "solution_go")
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		// go run compiles and runs in one step
-		cmd = exec.CommandContext(ctx, "go", "run", srcPath)
+		// Two-phase: compile with generous timeout, then run with user time limit
+		compileCtx, compileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer compileCancel()
+		compile := exec.CommandContext(compileCtx, "go", "build", "-o", binPath, srcPath)
+		compileOut, compileErr := compile.CombinedOutput()
+		if compileErr != nil {
+			return ExecutionResult{
+				Output:     string(compileOut),
+				CompileOut: string(compileOut),
+				ExitCode:   1,
+				Error:      "compilation_error",
+				ErrorType:  "compilation_error",
+				DurationMs: time.Since(startTime).Milliseconds(),
+			}, nil
+		}
+		// Reset start time to exclude compilation from execution time
+		startTime = time.Now()
+		cmd = exec.CommandContext(ctx, binPath)
 
 	default:
 		return ExecutionResult{
@@ -166,15 +191,22 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 	// Pipe stdin
 	cmd.Stdin = strings.NewReader(input)
 
-	// Capture stdout + stderr
-	out, runErr := cmd.CombinedOutput()
-	output := string(out)
+	// Capture stdout and stderr separately — critical for correct output comparison.
+	// CombinedOutput mixes stderr warnings/info into stdout, causing wrong verdicts.
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	runErr := cmd.Run()
+	stdout := stdoutBuf.String()
+	stderr := stderrBuf.String()
 	duration := time.Since(startTime).Milliseconds()
 
 	// Check for timeout
 	if ctx.Err() == context.DeadlineExceeded {
 		return ExecutionResult{
-			Output:     output,
+			Output:     stdout,
+			CompileOut: stderr,
 			ExitCode:   -1,
 			TimedOut:   true,
 			Error:      "time_limit_exceeded",
@@ -189,8 +221,17 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		}
+		// Include stderr in output for runtime errors so user sees the error message
+		errOutput := stdout
+		if stderr != "" {
+			if errOutput != "" {
+				errOutput += "\n"
+			}
+			errOutput += stderr
+		}
 		return ExecutionResult{
-			Output:     output,
+			Output:     errOutput,
+			CompileOut: stderr,
 			ExitCode:   exitCode,
 			Error:      "runtime_error",
 			ErrorType:  "runtime_error",
@@ -198,8 +239,9 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		}, nil
 	}
 
+	// Success — return only stdout (stderr is ignored for output comparison)
 	return ExecutionResult{
-		Output:     output,
+		Output:     stdout,
 		ExitCode:   0,
 		DurationMs: duration,
 	}, nil
