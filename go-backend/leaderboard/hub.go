@@ -106,7 +106,7 @@ func queryLeaderboard(testID string) []LeaderboardEntry {
 	database.DB.Table("test_attempts").
 		Select("test_attempts.userId as user_id, user.username, test_attempts.score, test_attempts.totalQuestions as total_questions, test_attempts.timeTaken as time_taken").
 		Joins("JOIN user ON user.id = test_attempts.userId").
-		Where("test_attempts.testId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''", testID).
+		Where("test_attempts.testId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != '' AND test_attempts.submittedAt != '0001-01-01 00:00:00+00:00' AND test_attempts.submittedAt > '0001-01-02'", testID).
 		Order("test_attempts.score DESC, test_attempts.timeTaken ASC, test_attempts.submittedAt ASC").
 		Scan(&rows)
 
