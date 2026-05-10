@@ -91,10 +91,11 @@ func (h *Hub) GetLeaderboard(testID string) []LeaderboardEntry {
 }
 
 // queryLeaderboard fetches the ranked leaderboard from the database.
-// Order: score DESC, timeTaken ASC, submittedAt ASC.
-// Only includes submitted attempts (submittedAt IS NOT NULL and not zero).
+// Uses SQL RANK() window function for correct tie handling.
+// Only includes submitted attempts (submittedAt is a real timestamp, not zero-time).
 func queryLeaderboard(testID string) []LeaderboardEntry {
 	type row struct {
+		Rank           int    `json:"rank"`
 		UserID         string `json:"userId"`
 		Username       string `json:"username"`
 		Score          int    `json:"score"`
@@ -103,23 +104,40 @@ func queryLeaderboard(testID string) []LeaderboardEntry {
 	}
 
 	var rows []row
-	database.DB.Table("test_attempts").
-		Select("test_attempts.userId as user_id, user.username, test_attempts.score, test_attempts.totalQuestions as total_questions, test_attempts.timeTaken as time_taken").
-		Joins("JOIN user ON user.id = test_attempts.userId").
-		Where("test_attempts.testId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''", testID).
-		Order("test_attempts.score DESC, test_attempts.timeTaken ASC, test_attempts.submittedAt ASC").
-		Scan(&rows)
+	database.DB.Raw(`
+		SELECT
+			RANK() OVER (
+				ORDER BY ta.score DESC, ta.timeTaken ASC, ta.submittedAt ASC
+			) AS rank,
+			ta.userId AS user_id,
+			u.username,
+			ta.score,
+			ta.totalQuestions AS total_questions,
+			ta.timeTaken AS time_taken
+		FROM test_attempts ta
+		JOIN user u ON u.id = ta.userId
+		WHERE ta.testId = ?
+		  AND ta.submittedAt IS NOT NULL
+		  AND ta.submittedAt != ''
+		  AND ta.submittedAt != '0001-01-01 00:00:00+00:00'
+		  AND ta.submittedAt > '0001-01-02'
+		ORDER BY rank ASC
+	`, testID).Scan(&rows)
 
 	entries := make([]LeaderboardEntry, len(rows))
 	for i, r := range rows {
 		entries[i] = LeaderboardEntry{
-			Rank:           i + 1,
+			Rank:           r.Rank,
 			UserID:         r.UserID,
 			Username:       r.Username,
 			Score:          r.Score,
 			TotalQuestions: r.TotalQuestions,
 			TimeTaken:      r.TimeTaken,
 		}
+	}
+	log.Printf("[LEADERBOARD] testID=%s returned %d entries", testID, len(entries))
+	for _, e := range entries {
+		log.Printf("[LEADERBOARD]   rank=%d user=%s(%s) score=%d", e.Rank, e.Username, e.UserID, e.Score)
 	}
 	return entries
 }

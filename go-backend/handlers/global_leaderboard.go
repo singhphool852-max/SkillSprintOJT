@@ -49,7 +49,7 @@ func GetGlobalLeaderboard(c *gin.Context) {
 			"SUM(tests.maxScore) as total_max_score").
 		Joins("JOIN user ON user.id = test_attempts.userId").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
-		Where("test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''").
+		Where("test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != '' AND test_attempts.submittedAt != '0001-01-01 00:00:00+00:00' AND test_attempts.submittedAt > '0001-01-02'").
 		Where("user.role != 'admin'"). // Exclude admins from leaderboard
 		Group("test_attempts.userId, user.username").
 		Order("total_score DESC, tests_completed DESC").

@@ -4,6 +4,7 @@ import (
 	"backend/database"
 	"backend/judge"
 	"backend/models"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -206,7 +207,13 @@ func GetTestAttempt(c *gin.Context) {
 // Upserts the user's MCQ answer for a question.
 // ──────────────────────────────────────────────
 func SaveMCQ(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, exists := c.Get("userID")
+	log.Printf("[SUBMIT-MCQ] JWT userID=%v exists=%v", userID, exists)
+	if !exists || userID == nil || userID == "" {
+		log.Println("[SUBMIT-MCQ] CRITICAL: userID missing from JWT context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authenticated userId missing from token"})
+		return
+	}
 
 	var req struct {
 		AttemptID        string `json:"attemptId" binding:"required"`
@@ -217,6 +224,7 @@ func SaveMCQ(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "attemptId, questionId, and selectedOptionId are required"})
 		return
 	}
+	log.Printf("[SUBMIT-MCQ] userID=%v attemptId=%s questionId=%s optionId=%s", userID, req.AttemptID, req.QuestionID, req.SelectedOptionID)
 
 	// Verify attempt belongs to user
 	var attempt models.TestAttempt
@@ -431,7 +439,13 @@ func RunCode(c *gin.Context) {
 // Saves result to submissions table (upsert).
 // ──────────────────────────────────────────────
 func SubmitCode(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, exists := c.Get("userID")
+	log.Printf("[SUBMIT-CODE] JWT userID=%v exists=%v", userID, exists)
+	if !exists || userID == nil || userID == "" {
+		log.Println("[SUBMIT-CODE] CRITICAL: userID missing from JWT context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authenticated userId missing from token"})
+		return
+	}
 
 	var req struct {
 		AttemptID  string `json:"attemptId" binding:"required"`
@@ -443,6 +457,7 @@ func SubmitCode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "attemptId, questionId, code, and language are required"})
 		return
 	}
+	log.Printf("[SUBMIT-CODE] userID=%v attemptId=%s questionId=%s lang=%s", userID, req.AttemptID, req.QuestionID, req.Language)
 
 	// Verify attempt belongs to user
 	var attempt models.TestAttempt
@@ -588,7 +603,13 @@ func SubmitCode(c *gin.Context) {
 // ──────────────────────────────────────────────
 func SubmitTestAttempt(c *gin.Context) {
 	attemptID := c.Param("id")
-	userID, _ := c.Get("userID")
+	userID, exists := c.Get("userID")
+	log.Printf("[SUBMIT-ATTEMPT] JWT userID=%v exists=%v attemptId=%s", userID, exists, attemptID)
+	if !exists || userID == nil || userID == "" {
+		log.Println("[SUBMIT-ATTEMPT] CRITICAL: userID missing from JWT context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authenticated userId missing from token"})
+		return
+	}
 
 	var attempt models.TestAttempt
 	if err := database.DB.Where("id = ? AND userId = ?", attemptID, userID).First(&attempt).Error; err != nil {
@@ -655,6 +676,7 @@ func SubmitTestAttempt(c *gin.Context) {
 	attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
 	attempt.SubmittedAt = time.Now()
 	attempt.IsAutoSubmitted = isAutoSubmitted
+	log.Printf("[DB WRITE] SubmitTestAttempt: userID=%s testID=%s attemptID=%s score=%d submittedAt=%v", attempt.UserID, attempt.TestID, attempt.ID, totalScore, attempt.SubmittedAt)
 	database.DB.Save(&attempt)
 
 	// Broadcast updated leaderboard to all WebSocket clients for this test
