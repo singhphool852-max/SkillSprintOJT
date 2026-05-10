@@ -242,9 +242,9 @@ func SaveMCQ(c *gin.Context) {
 	// Upsert: check if submission already exists
 	var existing models.TestSubmission
 	if err := database.DB.Where("attemptId = ? AND questionId = ?", req.AttemptID, req.QuestionID).First(&existing).Error; err == nil {
-		// Update existing
+		// FIX: targeted update instead of Save() to avoid overwriting unrelated columns
+		database.DB.Model(&existing).Updates(map[string]interface{}{"selectedOptionId": req.SelectedOptionID})
 		existing.SelectedOptionID = req.SelectedOptionID
-		database.DB.Save(&existing)
 		c.JSON(http.StatusOK, existing)
 		return
 	}
@@ -309,12 +309,12 @@ func SaveDraft(c *gin.Context) {
 	// Upsert draft
 	var existing models.TestSubmission
 	if err := database.DB.Where("attemptId = ? AND questionId = ?", req.AttemptID, req.QuestionID).First(&existing).Error; err == nil {
-		existing.Code = req.Code
-		existing.Language = req.Language
+		// FIX: targeted update instead of Save()
+		updates := map[string]interface{}{"code": req.Code, "language": req.Language}
 		if existing.Verdict == "" {
-			existing.Verdict = "draft"
+			updates["verdict"] = "draft"
 		}
-		database.DB.Save(&existing)
+		database.DB.Model(&existing).Updates(updates)
 		c.JSON(http.StatusOK, gin.H{"status": "saved"})
 		return
 	}
@@ -554,14 +554,15 @@ func SubmitCode(c *gin.Context) {
 	// Upsert submission
 	var existing models.TestSubmission
 	if err := database.DB.Where("attemptId = ? AND questionId = ?", req.AttemptID, req.QuestionID).First(&existing).Error; err == nil {
-		// Update existing submission
-		existing.Code = req.Code
-		existing.Language = req.Language
-		existing.Verdict = verdict
-		existing.PassedCount = passedCount
-		existing.TotalCount = totalCount
-		existing.Score = score
-		database.DB.Save(&existing)
+		// FIX: targeted update instead of Save() to avoid overwriting unrelated columns
+		database.DB.Model(&existing).Updates(map[string]interface{}{
+			"code":        req.Code,
+			"language":    req.Language,
+			"verdict":     verdict,
+			"passedCount": passedCount,
+			"totalCount":  totalCount,
+			"score":       score,
+		})
 	} else {
 		// Create new submission
 		submission := models.TestSubmission{
@@ -611,25 +612,36 @@ func SubmitTestAttempt(c *gin.Context) {
 		return
 	}
 
+	// ── Begin transaction to prevent race with auto-submit goroutine ──
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		log.Printf("[SUBMIT-ATTEMPT] failed to begin tx: %v", tx.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
+		return
+	}
+
+	// Re-read attempt inside transaction to prevent race
 	var attempt models.TestAttempt
-	if err := database.DB.Where("id = ? AND userId = ?", attemptID, userID).First(&attempt).Error; err != nil {
+	if err := tx.Where("id = ? AND userId = ?", attemptID, userID).First(&attempt).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Attempt not found"})
 		return
 	}
 
-	// Prevent double-submit
+	// Prevent double-submit (checked inside transaction)
 	if !attempt.SubmittedAt.IsZero() {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Attempt already submitted"})
 		return
 	}
 
 	// Get all questions for the test (need MCQ options for grading)
 	var questions []models.TestQuestion
-	database.DB.Preload("MCQOptions").Where("testId = ?", attempt.TestID).Find(&questions)
+	tx.Preload("MCQOptions").Where("testId = ?", attempt.TestID).Find(&questions)
 
 	// Get all submissions for this attempt
 	var submissions []models.TestSubmission
-	database.DB.Where("attemptId = ?", attemptID).Find(&submissions)
+	tx.Where("attemptId = ?", attemptID).Find(&submissions)
 
 	// Build submission lookup by questionID
 	subMap := make(map[string]*models.TestSubmission)
@@ -658,7 +670,11 @@ func SubmitTestAttempt(c *gin.Context) {
 				sub.Score = 0
 				sub.Verdict = "wrong_answer"
 			}
-			database.DB.Save(sub)
+			// FIX: targeted update instead of Save()
+			tx.Model(sub).Updates(map[string]interface{}{
+				"score":   sub.Score,
+				"verdict": sub.Verdict,
+			})
 		}
 		// Coding scores are already calculated in SubmitCode — just sum them
 
@@ -667,19 +683,36 @@ func SubmitTestAttempt(c *gin.Context) {
 
 	// Check if auto-submitted (time ran out)
 	var test models.Test
-	database.DB.Where("id = ?", attempt.TestID).First(&test)
+	tx.Where("id = ?", attempt.TestID).First(&test)
 	elapsed := time.Since(test.StartTime)
 	isAutoSubmitted := int(elapsed.Seconds()) >= test.DurationSeconds
 
-	attempt.Score = totalScore
-	attempt.TotalQuestions = len(questions)
-	attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
-	attempt.SubmittedAt = time.Now()
-	attempt.IsAutoSubmitted = isAutoSubmitted
-	log.Printf("[DB WRITE] SubmitTestAttempt: userID=%s testID=%s attemptID=%s score=%d submittedAt=%v", attempt.UserID, attempt.TestID, attempt.ID, totalScore, attempt.SubmittedAt)
-	database.DB.Save(&attempt)
+	// FIX: Use targeted Updates() instead of Save() to prevent zero-value overwrites
+	submittedAt := time.Now()
+	log.Printf("[DB WRITE] SubmitTestAttempt: userID=%s testID=%s attemptID=%s score=%d", attempt.UserID, attempt.TestID, attempt.ID, totalScore)
+	result := tx.Model(&models.TestAttempt{}).Where("id = ?", attempt.ID).Updates(map[string]interface{}{
+		"score":           totalScore,
+		"totalQuestions":  len(questions),
+		"timeTaken":       int(time.Since(attempt.StartedAt).Seconds()),
+		"submittedAt":     submittedAt,
+		"isAutoSubmitted": isAutoSubmitted,
+	})
+	if result.Error != nil {
+		tx.Rollback()
+		log.Printf("[SUBMIT-ATTEMPT] update failed: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attempt"})
+		return
+	}
 
-	// Broadcast updated leaderboard to all WebSocket clients for this test
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("[SUBMIT-ATTEMPT] commit failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit"})
+		return
+	}
+
+	log.Printf("[SUBMIT-ATTEMPT] SUCCESS: attemptID=%s score=%d auto=%v", attempt.ID, totalScore, isAutoSubmitted)
+
+	// Broadcast updated leaderboard (after commit, non-blocking)
 	broadcastLeaderboard(attempt.TestID)
 
 	c.JSON(http.StatusOK, gin.H{
