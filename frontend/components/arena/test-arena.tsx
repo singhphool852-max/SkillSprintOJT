@@ -19,8 +19,16 @@ import {
   XCircle,
   AlertTriangle,
 } from "lucide-react"
-import { API_URL, WS_BASE } from "@/lib/api-config"
+ update-cors-amplify
+import { API_BASE, WS_BASE } from "@/lib/api-config"
 import { useAntiCheat } from "@/hooks/useAntiCheat"
+
+import { API_URL, WS_BASE } from "@/lib/api-config"
+ main
+ main
+
+import { useAntiCheat } from "@/hooks/useAntiCheat"
+ main
 
 // Removed hardcoded API constant
 
@@ -406,7 +414,11 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
     // Fetch language templates for the editor
     async function fetchLangTemplates() {
       try {
+ main
+        const res = await fetch(`${API_BASE}/api/arena/languages`, { credentials: "include" })
+
         const res = await fetch(`${API_URL}/api/arena/languages`, { credentials: "include" })
+main
         if (res.ok) {
           const data = await res.json()
           const templates: Record<string, string> = {}
