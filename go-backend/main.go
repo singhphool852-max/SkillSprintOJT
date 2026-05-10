@@ -78,7 +78,7 @@ func main() {
 	})
 
 	api := r.Group("/api")
-	
+
 	// Administrative Utility
 	api.GET("/admin/reload-env", func(c *gin.Context) {
 		godotenv.Load()
