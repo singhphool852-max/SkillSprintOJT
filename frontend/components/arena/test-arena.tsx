@@ -127,7 +127,7 @@ const statusStyle: Record<string, { color: string; bg: string; label: string }> 
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════
 
-export function TestArena() {
+export function TestArena({ onActiveChange }: { onActiveChange?: (active: boolean) => void }) {
   // ── Top-level state: which view to show ──
   const [attemptId, setAttemptId] = useState<string | null>(null)
   const [testId, setTestId] = useState<string | null>(null)
@@ -139,14 +139,16 @@ export function TestArena() {
     if (saved && savedTest) {
       setAttemptId(saved)
       setTestId(savedTest)
+      onActiveChange?.(true)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleJoined(aId: string, tId: string) {
     setAttemptId(aId)
     setTestId(tId)
     localStorage.setItem("testArena_attemptId", aId)
     localStorage.setItem("testArena_testId", tId)
+    onActiveChange?.(true)
   }
 
   function handleExit() {
@@ -154,6 +156,7 @@ export function TestArena() {
     setTestId(null)
     localStorage.removeItem("testArena_attemptId")
     localStorage.removeItem("testArena_testId")
+    onActiveChange?.(false)
   }
 
   if (attemptId && testId) {
@@ -367,13 +370,27 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
   const draftSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Anti-cheat hook ──
-  const { violationCount, warningMessage, showWarning } = useAntiCheat({
+  // requestFullscreen is called from the join handler (user gesture)
+  // so the browser allows it. The hook arms monitoring after fullscreen succeeds.
+  const { violationCount, warningMessage, showWarning, requestFullscreen } = useAntiCheat({
     attemptId,
     testId,
     remainingSeconds,
     onAutoSubmit: () => handleSubmitAttempt(),
     enabled: !loading && !submitted,
   })
+
+  // Request fullscreen once test data is loaded (triggered by user's Join click)
+  const hasRequestedFullscreenRef = useRef(false)
+  useEffect(() => {
+    if (!loading && !submitted && !hasRequestedFullscreenRef.current) {
+      hasRequestedFullscreenRef.current = true
+      // Small delay to ensure React render is complete
+      requestAnimationFrame(() => {
+        requestFullscreen()
+      })
+    }
+  }, [loading, submitted, requestFullscreen])
 
   // Fetch attempt data
   const fetchAttempt = useCallback(async () => {
@@ -979,39 +996,63 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
                         </div>
                         {/* Code textarea */}
                         <textarea
+                          ref={(el) => {
+                            // Store ref for cursor positioning
+                            if (el) (el as any).__editorRef = true
+                          }}
                           value={code}
                           onChange={(e) => handleCodeChange(e.target.value)}
                           spellCheck={false}
                           className="flex-1 min-h-[280px] w-full bg-transparent p-4 font-mono text-sm text-foreground focus:outline-none resize-y leading-6"
-                          style={{ fontFamily: "'Geist Mono', 'Fira Code', 'Consolas', monospace", tabSize: 4 }}
+                          style={{ fontFamily: "'Geist Mono', 'Fira Code', 'Consolas', monospace", tabSize: 4, MozTabSize: 4 } as React.CSSProperties}
                           placeholder="// Write your solution here..."
                           onKeyDown={(e) => {
                             const target = e.target as HTMLTextAreaElement
                             const start = target.selectionStart
                             const end = target.selectionEnd
 
-                            // Tab key inserts spaces instead of changing focus
+                            // Tab key: insert 4 spaces (or dedent with Shift+Tab)
                             if (e.key === "Tab") {
                               e.preventDefault()
-                              const newCode = code.substring(0, start) + "    " + code.substring(end)
-                              handleCodeChange(newCode)
-                              setTimeout(() => {
-                                target.selectionStart = target.selectionEnd = start + 4
-                              }, 0)
+                              e.stopPropagation() // prevent anti-cheat from catching this
+
+                              if (e.shiftKey) {
+                                // Shift+Tab: dedent — remove up to 4 leading spaces from current line
+                                const before = code.substring(0, start)
+                                const after = code.substring(end)
+                                const lineStart = before.lastIndexOf("\n") + 1
+                                const linePrefix = code.substring(lineStart, start)
+                                const leadingMatch = linePrefix.match(/^( {1,4})/)
+                                if (leadingMatch) {
+                                  const removeCount = leadingMatch[1].length
+                                  const newCode = code.substring(0, lineStart) + code.substring(lineStart + removeCount)
+                                  handleCodeChange(newCode)
+                                  const newPos = Math.max(lineStart, start - removeCount)
+                                  requestAnimationFrame(() => {
+                                    target.selectionStart = target.selectionEnd = newPos
+                                  })
+                                }
+                              } else {
+                                // Tab: insert 4 spaces
+                                const newCode = code.substring(0, start) + "    " + code.substring(end)
+                                handleCodeChange(newCode)
+                                requestAnimationFrame(() => {
+                                  target.selectionStart = target.selectionEnd = start + 4
+                                })
+                              }
                               return
                             }
 
                             // Enter key: auto-indent
                             if (e.key === "Enter") {
                               e.preventDefault()
-                              // Find the current line
                               const before = code.substring(0, start)
                               const after = code.substring(end)
                               const currentLine = before.split("\n").pop() || ""
                               // Get leading whitespace of current line
                               const indentMatch = currentLine.match(/^(\s*)/)
                               let indent = indentMatch ? indentMatch[1] : ""
-                              // Add extra indent if line ends with { : ( or def/if/for/while/class etc.
+                              // Add extra indent if line ends with { : ( ,
                               const trimmedLine = currentLine.trimEnd()
                               if (trimmedLine.endsWith("{") || trimmedLine.endsWith(":") || trimmedLine.endsWith("(") || trimmedLine.endsWith(",")) {
                                 indent += "    "
@@ -1019,10 +1060,27 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
                               const newCode = before + "\n" + indent + after
                               handleCodeChange(newCode)
                               const newPos = start + 1 + indent.length
-                              setTimeout(() => {
+                              requestAnimationFrame(() => {
                                 target.selectionStart = target.selectionEnd = newPos
-                              }, 0)
+                              })
                               return
+                            }
+
+                            // Backspace: delete 4 spaces if cursor is at indent boundary
+                            if (e.key === "Backspace" && start === end && start > 0) {
+                              const before = code.substring(0, start)
+                              const lineStart = before.lastIndexOf("\n") + 1
+                              const linePrefix = before.substring(lineStart)
+                              // Only if the prefix is all spaces and length is multiple of 4
+                              if (linePrefix.length > 0 && linePrefix.length % 4 === 0 && /^ +$/.test(linePrefix)) {
+                                e.preventDefault()
+                                const newCode = code.substring(0, start - 4) + code.substring(end)
+                                handleCodeChange(newCode)
+                                requestAnimationFrame(() => {
+                                  target.selectionStart = target.selectionEnd = start - 4
+                                })
+                                return
+                              }
                             }
                           }}
                         />

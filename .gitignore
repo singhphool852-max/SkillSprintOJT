@@ -27,3 +27,4 @@ go-backend/backend
 # Logs and tests
 *.log
 test_notes.txt
+go-backend/app

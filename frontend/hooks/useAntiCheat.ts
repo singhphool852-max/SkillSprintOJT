@@ -6,6 +6,10 @@ import { API_URL } from "@/lib/api-config"
 // ──────────────────────────────────────────────
 // Anti-Cheat Hook — fullscreen lock, visibility,
 // blur, keyboard shortcut, copy/paste blocking.
+//
+// KEY FIX: Anti-cheat is "armed" only AFTER fullscreen
+// is successfully established + a 1s grace period.
+// This prevents false violations on initial join.
 // ──────────────────────────────────────────────
 
 interface AntiCheatOptions {
@@ -20,6 +24,7 @@ interface AntiCheatState {
   violationCount: number
   warningMessage: string | null
   showWarning: boolean
+  requestFullscreen: () => void // caller triggers on user gesture (Join click)
 }
 
 const VIOLATION_LABELS: Record<string, string> = {
@@ -46,7 +51,10 @@ export function useAntiCheat({
   const remainingRef = useRef(remainingSeconds)
   const violationCountRef = useRef(0)
   const autoSubmitCalledRef = useRef(false)
-  const fullscreenRequestedRef = useRef(false)
+
+  // ── ARMED FLAG: prevents false triggers during setup ──
+  const antiCheatArmedRef = useRef(false)
+
   // Debounce: prevent duplicate violations from rapid event bursts
   const lastViolationTimeRef = useRef(0)
 
@@ -58,6 +66,9 @@ export function useAntiCheat({
   // Log violation to backend
   const logViolation = useCallback(
     async (violationType: string) => {
+      // GUARD: only count violations when anti-cheat is armed
+      if (!antiCheatArmedRef.current) return
+
       // Debounce: ignore violations within 2s of the last one
       const now = Date.now()
       if (now - lastViolationTimeRef.current < 2000) return
@@ -111,28 +122,46 @@ export function useAntiCheat({
     [attemptId, testId, onAutoSubmit]
   )
 
-  // Request fullscreen
+  // Request fullscreen — exported for parent to call from user gesture (Join button)
   const requestFullscreen = useCallback(() => {
-    if (fullscreenRequestedRef.current) return
-    fullscreenRequestedRef.current = true
     const el = document.documentElement
     if (el.requestFullscreen) {
-      el.requestFullscreen().catch(() => {
-        // Browser may block if not user-gesture-initiated
-        fullscreenRequestedRef.current = false
-      })
+      el.requestFullscreen()
+        .then(() => {
+          // Fullscreen entered successfully — arm after grace period
+          setTimeout(() => {
+            antiCheatArmedRef.current = true
+          }, 1500) // 1.5s grace to avoid race with fullscreenchange event
+        })
+        .catch(() => {
+          // Browser blocked (no user gesture). Still arm anti-cheat
+          // after a delay so monitoring works even without fullscreen.
+          setTimeout(() => {
+            antiCheatArmedRef.current = true
+          }, 2000)
+        })
+    } else {
+      // Fullscreen API not supported — arm anyway
+      setTimeout(() => {
+        antiCheatArmedRef.current = true
+      }, 1500)
     }
   }, [])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      // Reset armed state when disabled
+      antiCheatArmedRef.current = false
+      return
+    }
 
-    // ── 1. Request fullscreen on mount ──
-    requestFullscreen()
+    // NOTE: We do NOT call requestFullscreen() here.
+    // The parent component calls requestFullscreen() from the Join button handler
+    // so it's triggered by a user gesture (required by browsers).
 
-    // ── 2. Fullscreen exit detection ──
+    // ── Fullscreen exit detection ──
     function handleFullscreenChange() {
-      if (!document.fullscreenElement && violationCountRef.current < 3) {
+      if (!document.fullscreenElement && antiCheatArmedRef.current && violationCountRef.current < 3) {
         logViolation("fullscreen_exit")
         // Try to re-enter fullscreen
         setTimeout(() => {
@@ -141,21 +170,21 @@ export function useAntiCheat({
       }
     }
 
-    // ── 3. Tab switch detection ──
+    // ── Tab switch detection ──
     function handleVisibilityChange() {
-      if (document.hidden && violationCountRef.current < 3) {
+      if (document.hidden && antiCheatArmedRef.current && violationCountRef.current < 3) {
         logViolation("tab_switch")
       }
     }
 
-    // ── 4. Window blur detection ──
+    // ── Window blur detection ──
     function handleWindowBlur() {
-      if (violationCountRef.current < 3) {
+      if (antiCheatArmedRef.current && violationCountRef.current < 3) {
         logViolation("window_blur")
       }
     }
 
-    // ── 5. Copy/paste/cut/contextmenu blocking ──
+    // ── Copy/paste/cut/contextmenu blocking ──
     function handleCopy(e: ClipboardEvent) {
       // Allow inside code editor textarea
       if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return
@@ -180,7 +209,7 @@ export function useAntiCheat({
       e.preventDefault()
     }
 
-    // ── 6. Keyboard shortcut blocking ──
+    // ── Keyboard shortcut blocking ──
     function handleKeyDown(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey
 
@@ -238,8 +267,9 @@ export function useAntiCheat({
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {})
       }
+      antiCheatArmedRef.current = false
     }
-  }, [enabled, logViolation, requestFullscreen])
+  }, [enabled, logViolation])
 
-  return { violationCount, warningMessage, showWarning }
+  return { violationCount, warningMessage, showWarning, requestFullscreen }
 }
