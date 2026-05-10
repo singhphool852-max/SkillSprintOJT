@@ -11,10 +11,12 @@ import (
 
 // LeaderboardEntry is the payload sent to clients. Only username and score — no emails or sensitive data.
 type LeaderboardEntry struct {
-	Rank        int    `json:"rank"`
-	Username    string `json:"username"`
-	Score       int    `json:"score"`
-	SolvedCount int    `json:"solvedCount"`
+	Rank           int    `json:"rank"`
+	UserID         string `json:"user_id"`
+	Username       string `json:"username"`
+	Score          int    `json:"score"`
+	TotalQuestions int    `json:"total_questions"`
+	TimeTaken      int    `json:"time_taken"`
 }
 
 // Hub manages WebSocket clients grouped by test_id.
@@ -89,31 +91,34 @@ func (h *Hub) GetLeaderboard(testID string) []LeaderboardEntry {
 }
 
 // queryLeaderboard fetches the ranked leaderboard from the database.
-// Order: score DESC, then submittedAt ASC for tiebreak.
+// Order: score DESC, timeTaken ASC, submittedAt ASC.
 // Only includes submitted attempts (submittedAt IS NOT NULL and not zero).
 func queryLeaderboard(testID string) []LeaderboardEntry {
 	type row struct {
-		Username    string `json:"username"`
-		Score       int    `json:"score"`
-		SolvedCount int    `json:"solvedCount"`
+		UserID         string `json:"userId"`
+		Username       string `json:"username"`
+		Score          int    `json:"score"`
+		TotalQuestions int    `json:"totalQuestions"`
+		TimeTaken      int    `json:"timeTaken"`
 	}
 
 	var rows []row
 	database.DB.Table("test_attempts").
-		Select("user.username, test_attempts.score, "+
-			"(SELECT COUNT(*) FROM test_submissions WHERE test_submissions.attemptId = test_attempts.id AND test_submissions.verdict = 'accepted') as solved_count").
+		Select("test_attempts.userId as user_id, user.username, test_attempts.score, test_attempts.totalQuestions as total_questions, test_attempts.timeTaken as time_taken").
 		Joins("JOIN user ON user.id = test_attempts.userId").
 		Where("test_attempts.testId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''", testID).
-		Order("test_attempts.score DESC, test_attempts.submittedAt ASC").
+		Order("test_attempts.score DESC, test_attempts.timeTaken ASC, test_attempts.submittedAt ASC").
 		Scan(&rows)
 
 	entries := make([]LeaderboardEntry, len(rows))
 	for i, r := range rows {
 		entries[i] = LeaderboardEntry{
-			Rank:        i + 1,
-			Username:    r.Username,
-			Score:       r.Score,
-			SolvedCount: r.SolvedCount,
+			Rank:           i + 1,
+			UserID:         r.UserID,
+			Username:       r.Username,
+			Score:          r.Score,
+			TotalQuestions: r.TotalQuestions,
+			TimeTaken:      r.TimeTaken,
 		}
 	}
 	return entries

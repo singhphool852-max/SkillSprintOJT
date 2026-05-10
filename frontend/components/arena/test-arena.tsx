@@ -10,6 +10,7 @@ import {
   Play,
   Radio,
   Send,
+  Shield,
   Swords,
   Target,
   Trophy,
@@ -19,6 +20,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { API_URL, WS_BASE } from "@/lib/api-config"
+import { useAntiCheat } from "@/hooks/useAntiCheat"
 
 // Removed hardcoded API constant
 
@@ -155,7 +157,7 @@ export function TestArena() {
   }
 
   if (attemptId && testId) {
-    return <ActiveTest attemptId={attemptId} onExit={handleExit} />
+    return <ActiveTest attemptId={attemptId} testId={testId} onExit={handleExit} />
   }
 
   return <TestList onJoined={handleJoined} />
@@ -342,7 +344,7 @@ function TestList({ onJoined }: { onJoined: (attemptId: string, testId: string) 
 // VIEW 2 — Active Test
 // ═══════════════════════════════════════════════
 
-function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => void }) {
+function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: string; onExit: () => void }) {
   const [loading, setLoading] = useState(true)
   const [questions, setQuestions] = useState<Question[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -355,6 +357,7 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
   // Code editing state
   const [code, setCode] = useState("")
   const [language, setLanguage] = useState("python")
+  const [langTemplates, setLangTemplates] = useState<Record<string, string>>({})
   const [runResults, setRunResults] = useState<RunCaseResult[] | null>(null)
   const [submitResult, setSubmitResult] = useState<{ verdict: string; passedCount: number; totalCount: number } | null>(null)
   const [runLoading, setRunLoading] = useState(false)
@@ -362,6 +365,15 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
   const [compileError, setCompileError] = useState<string | null>(null)
   const [outputTab, setOutputTab] = useState<"results" | "output">("results")
   const draftSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Anti-cheat hook ──
+  const { violationCount, warningMessage, showWarning } = useAntiCheat({
+    attemptId,
+    testId,
+    remainingSeconds,
+    onAutoSubmit: () => handleSubmitAttempt(),
+    enabled: !loading && !submitted,
+  })
 
   // Fetch attempt data
   const fetchAttempt = useCallback(async () => {
@@ -391,6 +403,23 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
 
   useEffect(() => {
     fetchAttempt()
+    // Fetch language templates for the editor
+    async function fetchLangTemplates() {
+      try {
+        const res = await fetch(`${API_URL}/api/arena/languages`, { credentials: "include" })
+        if (res.ok) {
+          const data = await res.json()
+          const templates: Record<string, string> = {}
+          for (const lang of (data.languages || [])) {
+            templates[lang.id] = lang.template || ""
+          }
+          setLangTemplates(templates)
+        }
+      } catch (e) {
+        console.error("Failed to fetch language templates:", e)
+      }
+    }
+    fetchLangTemplates()
   }, [fetchAttempt])
 
   // WebSocket connection for backend-driven timer sync
@@ -493,17 +522,29 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
     setCompileError(null)
 
     if (q.type === "coding") {
-      // Load starter code or previously submitted code
+      // Load previously submitted code, or language-specific template
       const existingSub = submissions.find((s) => s.questionId === q.id && s.type === "coding")
       if (existingSub?.code) {
         setCode(existingSub.code)
         setLanguage(existingSub.language || "python")
       } else {
-        setCode(q.codingDetail?.starterCode || "")
         setLanguage("python")
+        setCode(langTemplates["python"] || "")
       }
     }
   }, [currentQ, questions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When language changes, load the appropriate template (unless user has existing submission for this question)
+  useEffect(() => {
+    const q = questions[currentQ]
+    if (!q || q.type !== "coding") return
+    const existingSub = submissions.find((s) => s.questionId === q.id && s.type === "coding" && s.language === language)
+    if (existingSub?.code) {
+      setCode(existingSub.code)
+    } else {
+      setCode(langTemplates[language] || "")
+    }
+  }, [language]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save draft on code change (debounced 3s)
   function handleCodeChange(newCode: string) {
@@ -689,6 +730,40 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
   return (
     <div className="relative min-h-[60vh] flex flex-col">
       <div className="absolute inset-0 grid-bg opacity-30" />
+
+      {/* ── Anti-cheat warning overlay ── */}
+      {showWarning && warningMessage && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className={`relative border-2 px-8 py-6 max-w-lg text-center ${
+            violationCount >= 3
+              ? "border-neon-pink bg-neon-pink/10 shadow-[0_0_40px_rgba(255,50,100,0.3)]"
+              : violationCount === 2
+                ? "border-neon-pink/80 bg-neon-pink/5 shadow-[0_0_30px_rgba(255,50,100,0.2)]"
+                : "border-neon-yellow/80 bg-neon-yellow/5 shadow-[0_0_30px_rgba(255,220,50,0.2)]"
+          }`}>
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Shield className={`h-6 w-6 ${
+                violationCount >= 2 ? "text-neon-pink animate-pulse" : "text-neon-yellow animate-pulse"
+              }`} />
+              <span className={`font-mono text-[10px] tracking-[0.3em] uppercase ${
+                violationCount >= 2 ? "text-neon-pink" : "text-neon-yellow"
+              }`}>
+                ANTI-CHEAT SYSTEM
+              </span>
+            </div>
+            <p className={`font-mono text-sm leading-relaxed ${
+              violationCount >= 2 ? "text-neon-pink" : "text-neon-yellow"
+            }`}>
+              {warningMessage}
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <div className={`h-2 w-2 rounded-full ${violationCount >= 1 ? "bg-neon-pink" : "bg-panel-border"}`} />
+              <div className={`h-2 w-2 rounded-full ${violationCount >= 2 ? "bg-neon-pink" : "bg-panel-border"}`} />
+              <div className={`h-2 w-2 rounded-full ${violationCount >= 3 ? "bg-neon-pink" : "bg-panel-border"}`} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Timer bar ── */}
       <div className="relative z-10 border-b border-panel-border bg-panel-bg/80 backdrop-blur-sm">
@@ -911,17 +986,43 @@ function ActiveTest({ attemptId, onExit }: { attemptId: string; onExit: () => vo
                           style={{ fontFamily: "'Geist Mono', 'Fira Code', 'Consolas', monospace", tabSize: 4 }}
                           placeholder="// Write your solution here..."
                           onKeyDown={(e) => {
+                            const target = e.target as HTMLTextAreaElement
+                            const start = target.selectionStart
+                            const end = target.selectionEnd
+
                             // Tab key inserts spaces instead of changing focus
                             if (e.key === "Tab") {
                               e.preventDefault()
-                              const target = e.target as HTMLTextAreaElement
-                              const start = target.selectionStart
-                              const end = target.selectionEnd
                               const newCode = code.substring(0, start) + "    " + code.substring(end)
                               handleCodeChange(newCode)
                               setTimeout(() => {
                                 target.selectionStart = target.selectionEnd = start + 4
                               }, 0)
+                              return
+                            }
+
+                            // Enter key: auto-indent
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              // Find the current line
+                              const before = code.substring(0, start)
+                              const after = code.substring(end)
+                              const currentLine = before.split("\n").pop() || ""
+                              // Get leading whitespace of current line
+                              const indentMatch = currentLine.match(/^(\s*)/)
+                              let indent = indentMatch ? indentMatch[1] : ""
+                              // Add extra indent if line ends with { : ( or def/if/for/while/class etc.
+                              const trimmedLine = currentLine.trimEnd()
+                              if (trimmedLine.endsWith("{") || trimmedLine.endsWith(":") || trimmedLine.endsWith("(") || trimmedLine.endsWith(",")) {
+                                indent += "    "
+                              }
+                              const newCode = before + "\n" + indent + after
+                              handleCodeChange(newCode)
+                              const newPos = start + 1 + indent.length
+                              setTimeout(() => {
+                                target.selectionStart = target.selectionEnd = newPos
+                              }, 0)
+                              return
                             }
                           }}
                         />

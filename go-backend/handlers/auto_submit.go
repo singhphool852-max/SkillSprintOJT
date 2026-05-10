@@ -82,6 +82,8 @@ func autoSubmitExpiredAttempts() {
 			}
 
 			attempt.Score = totalScore
+			attempt.TotalQuestions = len(questions)
+			attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
 			attempt.SubmittedAt = time.Now()
 			attempt.IsAutoSubmitted = true
 			database.DB.Save(&attempt)
