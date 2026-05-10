@@ -5,11 +5,15 @@ import { API_URL } from "@/lib/api-config"
 
 // ──────────────────────────────────────────────
 // Anti-Cheat Hook — fullscreen lock, visibility,
-// blur, keyboard shortcut, copy/paste blocking.
+// blur, keyboard shortcut, copy/paste/cut/contextmenu blocking.
 //
-// KEY FIX: Anti-cheat is "armed" only AFTER fullscreen
-// is successfully established + a 1s grace period.
-// This prevents false violations on initial join.
+// KEY DESIGN:
+// 1. requestFullscreen() is exported so the PARENT can call it
+//    directly inside a click handler (user gesture required by browsers).
+// 2. Anti-cheat is "armed" only AFTER fullscreen succeeds + 1.5s grace.
+// 3. Copy/paste/cut/contextmenu are always blocked when armed.
+// 4. DevTools shortcuts (F12, Ctrl+Shift+I/J, Ctrl+U etc.) are blocked.
+// 5. 3 violations → auto-submit.
 // ──────────────────────────────────────────────
 
 interface AntiCheatOptions {
@@ -24,7 +28,7 @@ interface AntiCheatState {
   violationCount: number
   warningMessage: string | null
   showWarning: boolean
-  requestFullscreen: () => void // caller triggers on user gesture (Join click)
+  requestFullscreen: () => Promise<boolean> // caller triggers on user gesture (Join click)
 }
 
 const VIOLATION_LABELS: Record<string, string> = {
@@ -123,29 +127,28 @@ export function useAntiCheat({
   )
 
   // Request fullscreen — exported for parent to call from user gesture (Join button)
-  const requestFullscreen = useCallback(() => {
+  // Returns a promise that resolves to true if fullscreen was entered.
+  const requestFullscreen = useCallback(async (): Promise<boolean> => {
     const el = document.documentElement
-    if (el.requestFullscreen) {
-      el.requestFullscreen()
-        .then(() => {
-          // Fullscreen entered successfully — arm after grace period
-          setTimeout(() => {
-            antiCheatArmedRef.current = true
-          }, 1500) // 1.5s grace to avoid race with fullscreenchange event
-        })
-        .catch(() => {
-          // Browser blocked (no user gesture). Still arm anti-cheat
-          // after a delay so monitoring works even without fullscreen.
-          setTimeout(() => {
-            antiCheatArmedRef.current = true
-          }, 2000)
-        })
-    } else {
-      // Fullscreen API not supported — arm anyway
-      setTimeout(() => {
-        antiCheatArmedRef.current = true
-      }, 1500)
+    try {
+      if (el.requestFullscreen) {
+        await el.requestFullscreen()
+        // Fullscreen entered successfully — arm after grace period
+        setTimeout(() => {
+          antiCheatArmedRef.current = true
+        }, 1500) // 1.5s grace to avoid race with fullscreenchange event
+        return true
+      }
+    } catch {
+      // Browser blocked (no user gesture or policy). Still arm anti-cheat
+      // after a delay so monitoring works even without fullscreen.
+      console.warn("[anti-cheat] Fullscreen request failed, arming anyway")
     }
+    // Fallback: arm anyway after delay
+    setTimeout(() => {
+      antiCheatArmedRef.current = true
+    }, 2000)
+    return false
   }, [])
 
   useEffect(() => {
@@ -184,33 +187,36 @@ export function useAntiCheat({
       }
     }
 
-    // ── Copy/paste/cut/contextmenu blocking ──
+    // ── Copy/paste/cut blocking — ALWAYS block (even in textarea) ──
     function handleCopy(e: ClipboardEvent) {
-      // Allow inside code editor textarea
-      if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return
+      if (!antiCheatArmedRef.current) return
       e.preventDefault()
       logViolation("copy_blocked")
     }
 
     function handlePaste(e: ClipboardEvent) {
-      // Allow inside code editor textarea
-      if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return
+      if (!antiCheatArmedRef.current) return
       e.preventDefault()
       logViolation("paste_blocked")
     }
 
     function handleCut(e: ClipboardEvent) {
-      if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return
+      if (!antiCheatArmedRef.current) return
       e.preventDefault()
       logViolation("cut_blocked")
     }
 
+    // ── Right-click blocking ──
     function handleContextMenu(e: MouseEvent) {
+      if (!antiCheatArmedRef.current) return
       e.preventDefault()
+      logViolation("contextmenu_blocked")
     }
 
     // ── Keyboard shortcut blocking ──
     function handleKeyDown(e: KeyboardEvent) {
+      if (!antiCheatArmedRef.current) return
+
       const ctrl = e.ctrlKey || e.metaKey
 
       // F12
@@ -221,24 +227,32 @@ export function useAntiCheat({
       }
 
       if (ctrl) {
-        // Ctrl+Shift+I, Ctrl+Shift+J
+        // Ctrl+Shift+I, Ctrl+Shift+J (DevTools)
         if (e.shiftKey && (e.key === "I" || e.key === "i" || e.key === "J" || e.key === "j")) {
           e.preventDefault()
           logViolation("keyboard_shortcut")
           return
         }
-        // Ctrl+U, Ctrl+L, Ctrl+T, Ctrl+N, Ctrl+W
+        // Ctrl+U (view source), Ctrl+L (address bar), Ctrl+T (new tab),
+        // Ctrl+N (new window), Ctrl+W (close tab)
         if (["u", "U", "l", "L", "t", "T", "n", "N", "w", "W"].includes(e.key)) {
           e.preventDefault()
           logViolation("keyboard_shortcut")
           return
         }
-        // Ctrl+Tab
+        // Ctrl+Tab (switch tab)
         if (e.key === "Tab") {
           e.preventDefault()
           logViolation("keyboard_shortcut")
           return
         }
+      }
+
+      // Alt+Tab detection (limited — browser may not fire this)
+      if (e.altKey && e.key === "Tab") {
+        e.preventDefault()
+        logViolation("keyboard_shortcut")
+        return
       }
     }
 
@@ -246,22 +260,22 @@ export function useAntiCheat({
     document.addEventListener("fullscreenchange", handleFullscreenChange)
     document.addEventListener("visibilitychange", handleVisibilityChange)
     window.addEventListener("blur", handleWindowBlur)
-    document.addEventListener("copy", handleCopy as EventListener)
-    document.addEventListener("paste", handlePaste as EventListener)
-    document.addEventListener("cut", handleCut as EventListener)
-    document.addEventListener("contextmenu", handleContextMenu as EventListener)
-    document.addEventListener("keydown", handleKeyDown)
+    document.addEventListener("copy", handleCopy as EventListener, true)  // capture phase
+    document.addEventListener("paste", handlePaste as EventListener, true)
+    document.addEventListener("cut", handleCut as EventListener, true)
+    document.addEventListener("contextmenu", handleContextMenu as EventListener, true)
+    document.addEventListener("keydown", handleKeyDown, true) // capture phase to intercept before editor
 
     // ── Cleanup ──
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
       window.removeEventListener("blur", handleWindowBlur)
-      document.removeEventListener("copy", handleCopy as EventListener)
-      document.removeEventListener("paste", handlePaste as EventListener)
-      document.removeEventListener("cut", handleCut as EventListener)
-      document.removeEventListener("contextmenu", handleContextMenu as EventListener)
-      document.removeEventListener("keydown", handleKeyDown)
+      document.removeEventListener("copy", handleCopy as EventListener, true)
+      document.removeEventListener("paste", handlePaste as EventListener, true)
+      document.removeEventListener("cut", handleCut as EventListener, true)
+      document.removeEventListener("contextmenu", handleContextMenu as EventListener, true)
+      document.removeEventListener("keydown", handleKeyDown, true)
 
       // Exit fullscreen on cleanup
       if (document.fullscreenElement) {

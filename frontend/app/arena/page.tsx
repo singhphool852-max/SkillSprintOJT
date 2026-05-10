@@ -8,10 +8,11 @@ export default function ArenaPage() {
   const [isTestActive, setIsTestActive] = useState(false)
 
   // When a test is active, hide the lobby and render the test
-  // in a fullscreen-style container that takes over the page.
+  // in a fullscreen-style container that takes over the ENTIRE page.
+  // z-[9999] ensures it covers navbar, modals, everything.
   if (isTestActive) {
     return (
-      <main className="fixed inset-0 z-50 bg-deep-bg overflow-auto">
+      <main className="fixed inset-0 z-[9999] bg-deep-bg overflow-auto">
         <TestArena onActiveChange={setIsTestActive} />
       </main>
     )
