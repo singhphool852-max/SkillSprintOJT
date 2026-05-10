@@ -121,5 +121,9 @@ func queryLeaderboard(testID string) []LeaderboardEntry {
 			TimeTaken:      r.TimeTaken,
 		}
 	}
+	log.Printf("[LEADERBOARD] testID=%s returned %d entries", testID, len(entries))
+	for _, e := range entries {
+		log.Printf("[LEADERBOARD]   rank=%d user=%s(%s) score=%d", e.Rank, e.Username, e.UserID, e.Score)
+	}
 	return entries
 }
