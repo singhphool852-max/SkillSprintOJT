@@ -39,6 +39,7 @@ func ConnectDB() {
 		&models.TestAttempt{},
 		&models.TestSubmission{},
 		&models.TestResult{},
+		&models.TestViolation{},
 
 		// Training module models
 		&models.TrainingQuestion{},
