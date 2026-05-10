@@ -463,14 +463,14 @@ export default function AdminTestDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">STARTER CODE</label>
+                  <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">STARTER CODE HINT <span className="text-muted-foreground/50">(optional — shown in problem description, per-language templates load automatically)</span></label>
                   <textarea
                     value={starterCode}
                     onChange={(e) => setStarterCode(e.target.value)}
                     rows={5}
                     className="bg-deep-bg/80 border border-panel-border px-4 py-3 font-mono text-sm text-foreground focus:border-neon-pink/50 focus:outline-none resize-y"
                     style={{ fontFamily: "'Geist Mono', 'Fira Code', 'Consolas', monospace", tabSize: 4 }}
-                    placeholder="# Write your solution here"
+                    placeholder="Optional: function signature or approach hint for students"
                   />
                 </div>
                 <div className="flex flex-col gap-2 max-w-xs">

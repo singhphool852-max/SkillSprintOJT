@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"time"
 
 	"backend/arena"
 	"backend/database"
@@ -165,6 +164,7 @@ func main() {
 		arena.POST("/submissions/draft", handlers.SaveDraft)
 		arena.POST("/attempts/:id/submit", handlers.SubmitTestAttempt)
 		arena.GET("/attempts/:id/status", handlers.GetAttemptStatus)
+		arena.POST("/violations", handlers.LogViolation)
 	}
 
 	// Leaderboard Routes

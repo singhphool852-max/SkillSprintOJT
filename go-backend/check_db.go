@@ -1,10 +1,11 @@
+//go:build ignore
+
 package main
 
 import (
 	"fmt"
 	"log"
 
-	"backend/database"
 	"backend/models"
 
 	"github.com/glebarez/sqlite"

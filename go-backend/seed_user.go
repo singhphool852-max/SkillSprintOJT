@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -38,21 +40,30 @@ func main() {
 		panic("failed to hash password")
 	}
 
-	user := User{
-		ID:           uuid.New().String(),
-		Email:        "harshit3156@polaris.com",
-		Username:     "harshit3156",
-		Password:     string(hashed),
-		Role:         "admin",
-		AuthProvider: "local",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-
-	result := db.Create(&user)
-	if result.Error != nil {
-		fmt.Println("Error creating user:", result.Error)
+	var existingUser User
+	result := db.Where("email = ?", "singhphool852@gmail.com").First(&existingUser)
+	if result.Error == nil {
+		// User exists, update password and role
+		existingUser.Password = string(hashed)
+		existingUser.Role = "admin"
+		db.Save(&existingUser)
+		fmt.Println("User updated successfully to admin with password: password123")
 	} else {
-		fmt.Println("User created successfully with password: password123")
+		user := User{
+			ID:           uuid.New().String(),
+			Email:        "singhphool852@gmail.com",
+			Username:     "nishant",
+			Password:     string(hashed),
+			Role:         "admin",
+			AuthProvider: "local",
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
+		}
+		createResult := db.Create(&user)
+		if createResult.Error != nil {
+			fmt.Println("Error creating user:", createResult.Error)
+		} else {
+			fmt.Println("User created successfully with password: password123")
+		}
 	}
 }

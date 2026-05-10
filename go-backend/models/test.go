@@ -103,11 +103,14 @@ func (TestCase) TableName() string {
 // ──────────────────────────────────────────────
 type TestAttempt struct {
 	ID              string    `gorm:"primaryKey;column:id" json:"id"`
-	UserID          string    `gorm:"column:userId" json:"userId"`
-	TestID          string    `gorm:"column:testId" json:"testId"`
+	UserID          string    `gorm:"column:userId;uniqueIndex:idx_user_test" json:"userId"`
+	TestID          string    `gorm:"column:testId;uniqueIndex:idx_user_test" json:"testId"`
 	StartedAt       time.Time `gorm:"column:startedAt" json:"startedAt"`
 	SubmittedAt     time.Time `gorm:"column:submittedAt" json:"submittedAt"`
 	Score           int       `gorm:"column:score" json:"score"`
+	TotalQuestions  int       `gorm:"column:totalQuestions" json:"totalQuestions"`
+	TimeTaken       int       `gorm:"column:timeTaken" json:"timeTaken"` // seconds
+	ViolationCount  int       `gorm:"column:violationCount;default:0" json:"violationCount"`
 	IsAutoSubmitted bool      `gorm:"column:isAutoSubmitted;default:false" json:"isAutoSubmitted"`
 
 	User        User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
@@ -169,4 +172,22 @@ type TestResult struct {
 
 func (TestResult) TableName() string {
 	return "test_results"
+}
+
+// ──────────────────────────────────────────────
+// TestViolation — anti-cheat violation log entry
+// ──────────────────────────────────────────────
+type TestViolation struct {
+	ID            string    `gorm:"primaryKey;column:id" json:"id"`
+	AttemptID     string    `gorm:"column:attemptId;index" json:"attemptId"`
+	UserID        string    `gorm:"column:userId" json:"userId"`
+	TestID        string    `gorm:"column:testId" json:"testId"`
+	ViolationType string    `gorm:"column:violationType" json:"violationType"`
+	Timestamp     time.Time `gorm:"column:timestamp" json:"timestamp"`
+	RemainingTime int       `gorm:"column:remainingTime" json:"remainingTime"`
+	CreatedAt     time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+}
+
+func (TestViolation) TableName() string {
+	return "test_violations"
 }

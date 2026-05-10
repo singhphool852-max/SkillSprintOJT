@@ -651,6 +651,8 @@ func SubmitTestAttempt(c *gin.Context) {
 	isAutoSubmitted := int(elapsed.Seconds()) >= test.DurationSeconds
 
 	attempt.Score = totalScore
+	attempt.TotalQuestions = len(questions)
+	attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
 	attempt.SubmittedAt = time.Now()
 	attempt.IsAutoSubmitted = isAutoSubmitted
 	database.DB.Save(&attempt)
