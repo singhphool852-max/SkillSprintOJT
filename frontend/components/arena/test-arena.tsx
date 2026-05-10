@@ -132,7 +132,7 @@ export function TestArena({ onActiveChange }: { onActiveChange?: (active: boolea
   const [attemptId, setAttemptId] = useState<string | null>(null)
   const [testId, setTestId] = useState<string | null>(null)
 
-  // On mount: check localStorage for a saved attempt
+  // On mount: check localStorage for a saved attempt (resume after refresh)
   useEffect(() => {
     const saved = localStorage.getItem("testArena_attemptId")
     const savedTest = localStorage.getItem("testArena_testId")
@@ -140,6 +140,8 @@ export function TestArena({ onActiveChange }: { onActiveChange?: (active: boolea
       setAttemptId(saved)
       setTestId(savedTest)
       onActiveChange?.(true)
+      // Re-enter fullscreen for resumed session (won't arm — that happens inside ActiveTest)
+      document.documentElement.requestFullscreen?.().catch(() => {})
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -157,6 +159,10 @@ export function TestArena({ onActiveChange }: { onActiveChange?: (active: boolea
     localStorage.removeItem("testArena_attemptId")
     localStorage.removeItem("testArena_testId")
     onActiveChange?.(false)
+    // Exit fullscreen
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+    }
   }
 
   if (attemptId && testId) {
@@ -192,6 +198,15 @@ function TestList({ onJoined }: { onJoined: (attemptId: string, testId: string) 
   async function handleJoin(testId: string) {
     setJoiningId(testId)
     try {
+      // ── CRITICAL: Request fullscreen INSIDE the click handler ──
+      // Browsers require a user gesture (click) to allow requestFullscreen().
+      // If we do this in useEffect or after a re-render, the gesture context is lost.
+      try {
+        await document.documentElement.requestFullscreen()
+      } catch {
+        console.warn("[arena] Fullscreen request denied — continuing without fullscreen")
+      }
+
       const res = await fetch(`${API_URL}/api/arena/tests/${testId}/join`, {
         method: "POST",
         credentials: "include",
@@ -199,12 +214,15 @@ function TestList({ onJoined }: { onJoined: (attemptId: string, testId: string) 
       if (!res.ok) {
         const data = await res.json()
         alert(data.error || "Cannot join test")
+        // Exit fullscreen if join failed
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
         return
       }
       const data = await res.json()
       onJoined(data.attempt.id || data.attempt.ID, testId)
     } catch (e) {
       console.error("Join failed:", e)
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
     } finally {
       setJoiningId(null)
     }
@@ -370,8 +388,8 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
   const draftSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Anti-cheat hook ──
-  // requestFullscreen is called from the join handler (user gesture)
-  // so the browser allows it. The hook arms monitoring after fullscreen succeeds.
+  // Fullscreen is already entered by handleJoin (user gesture).
+  // The hook monitors for exits and arms after a grace period.
   const { violationCount, warningMessage, showWarning, requestFullscreen } = useAntiCheat({
     attemptId,
     testId,
@@ -380,15 +398,16 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
     enabled: !loading && !submitted,
   })
 
-  // Request fullscreen once test data is loaded (triggered by user's Join click)
-  const hasRequestedFullscreenRef = useRef(false)
+  // Arm anti-cheat monitoring once test data loads.
+  // Fullscreen was already requested in the Join click handler.
+  // This calls requestFullscreen() which will either re-enter or just arm the hook.
+  const hasArmedRef = useRef(false)
   useEffect(() => {
-    if (!loading && !submitted && !hasRequestedFullscreenRef.current) {
-      hasRequestedFullscreenRef.current = true
-      // Small delay to ensure React render is complete
-      requestAnimationFrame(() => {
-        requestFullscreen()
-      })
+    if (!loading && !submitted && !hasArmedRef.current) {
+      hasArmedRef.current = true
+      // Don't request fullscreen again — it's already active from handleJoin.
+      // Just call requestFullscreen to arm the monitoring (it's idempotent).
+      requestFullscreen()
     }
   }, [loading, submitted, requestFullscreen])
 
