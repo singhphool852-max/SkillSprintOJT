@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback, useState } from "react"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 // ──────────────────────────────────────────────
 // Anti-Cheat Hook — fullscreen lock, visibility,
@@ -85,7 +85,7 @@ export function useAntiCheat({
 
       // Log to backend
       try {
-        await fetch(`${API_BASE}/api/arena/violations`, {
+        await fetch(`${API_URL}/api/arena/violations`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
