@@ -3,11 +3,8 @@ package main
 import (
 	"log"
 	"os"
- update-cors-amplify
-
 	"strings"
 	"time"
- main
 
 	"backend/arena"
 	"backend/database"
