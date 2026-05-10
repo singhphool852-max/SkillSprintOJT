@@ -14,9 +14,9 @@ import {
   Target,
   Zap,
 } from "lucide-react"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
-const API = API_BASE
+const API = API_URL
 
 interface Topic {
   id: string
@@ -413,3 +413,4 @@ export default function AdminTestsPage() {
     </div>
   )
 }
+

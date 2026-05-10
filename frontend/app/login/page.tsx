@@ -17,7 +17,7 @@ import {
 import Link from "next/link"
 import Script from "next/script"
 import { useAuth } from "@/hooks/useAuth"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 function HudCorner({ className }: { className?: string }) {
   return (
@@ -68,7 +68,7 @@ function LoginContent() {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch(`${API_BASE}/api/auth/google`, {
+      const res = await fetch(`${API_URL}/api/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential: response.credential }),
@@ -128,7 +128,7 @@ function LoginContent() {
       return
     }
 
-    const endpoint = mode === "login" ? `${API_BASE}/api/auth/login` : `${API_BASE}/api/auth/signup`
+    const endpoint = mode === "login" ? `${API_URL}/api/auth/login` : `${API_URL}/api/auth/signup`
 
     try {
       const bodyPayload = mode === "signup" ? { email, password, username } : { email, password }
@@ -151,7 +151,7 @@ function LoginContent() {
       if (mode === "signup") {
         setSuccess("Account created! Initializing session...")
         // Automatically login after signup
-        const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+        const loginRes = await fetch(`${API_URL}/api/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
@@ -526,3 +526,4 @@ function LoginContent() {
     </div>
   )
 }
+

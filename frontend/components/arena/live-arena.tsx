@@ -12,7 +12,7 @@ import {
   Zap,
   Loader2,
 } from "lucide-react"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 interface Question {
   id: string;
@@ -56,7 +56,7 @@ export function LiveArena({ arenaId }: { arenaId: string }) {
   const fetchQuizData = useCallback(async () => {
     try {
       // 1. Get Quizzes
-      const quizRes = await fetch(`${API_BASE}/api/arenas/${arenaId}/quizzes`)
+      const quizRes = await fetch(`${API_URL}/api/arenas/${arenaId}/quizzes`)
       if (!quizRes.ok) throw new Error("Failed to fetch quiz")
       const quizzes = await quizRes.json()
       if (quizzes.length === 0) throw new Error("No active quizzes in this arena")
@@ -65,7 +65,7 @@ export function LiveArena({ arenaId }: { arenaId: string }) {
       setQuiz(activeQuiz)
 
       // 2. Get Questions
-      const qRes = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/questions`)
+      const qRes = await fetch(`${API_URL}/api/quizzes/${activeQuiz.id}/questions`)
       if (!qRes.ok) throw new Error("Failed to fetch questions")
       const qs = await qRes.json()
       setQuestions(qs)
@@ -108,7 +108,7 @@ export function LiveArena({ arenaId }: { arenaId: string }) {
           answers: [...answers, currentAnswer]
         }
         
-        const res = await fetch(`${API_BASE}/api/attempts`, {
+        const res = await fetch(`${API_URL}/api/attempts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -253,3 +253,4 @@ export function LiveArena({ arenaId }: { arenaId: string }) {
     </div>
   )
 }
+

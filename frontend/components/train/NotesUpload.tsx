@@ -1,7 +1,7 @@
 import { FileUp, FileText, Zap, Activity, AlertCircle } from "lucide-react"
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { API_BASE } from "@/lib/api-config"
+import { API_URL } from "@/lib/api-config"
 
 export function NotesUpload() {
   const router = useRouter()
@@ -37,10 +37,10 @@ export function NotesUpload() {
     formData.append("difficulty", difficulty)
     formData.append("count", count.toString())
 
-    const UPLOAD_URL = `${API_BASE}/api/train/upload-notes`
+    const UPLOAD_URL = `${API_URL}/api/train/upload-notes`
 
     console.log("[NOTES_UPLOAD] Init Sync Request:")
-    console.log(" - API_BASE:", API_BASE)
+    console.log(" - API_URL:", API_URL)
     console.log(" - URL:", UPLOAD_URL)
     console.log(" - File:", selectedFile.name, `(${selectedFile.size} bytes)`)
     console.log(" - Metadata:", { topic, difficulty, count })
@@ -192,4 +192,5 @@ export function NotesUpload() {
     </div>
   )
 }
+
 

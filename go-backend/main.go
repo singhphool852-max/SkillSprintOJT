@@ -3,6 +3,11 @@ package main
 import (
 	"log"
 	"os"
+ update-cors-amplify
+
+	"strings"
+	"time"
+ main
 
 	"backend/arena"
 	"backend/database"
@@ -40,20 +45,36 @@ func main() {
 
 	// Setup Robust CORS to allow Next.js communication
 	config := cors.Config{
-		AllowOrigins: []string{
-			"http://localhost:3000",
-			"https://main.dbpan1tvwu74i.amplifyapp.com",
+		AllowOriginFunc: func(origin string) bool {
+			// Allow localhost, Vercel, and Amplify domains
+			return origin == "http://localhost:3000" || 
+				   strings.HasSuffix(origin, ".vercel.app") || 
+				   strings.HasSuffix(origin, ".amplifyapp.com") ||
+				   origin == "https://skillsprintojt.onrender.com"
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length", "Set-Cookie"},
 		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
 	}
 	r.Use(cors.New(config))
 
 	// Explicitly handle OPTIONS for all paths
 	r.OPTIONS("/*path", func(c *gin.Context) {
 		c.Status(200)
+	})
+
+	// Health and Root Endpoints
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "Neural Link Stable", "time": time.Now().Format(time.RFC3339)})
+	})
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "SkillSprint Neural Engine Online",
+			"version": "1.0.0",
+			"api_root": "/api",
+		})
 	})
 
 	api := r.Group("/api")
@@ -70,11 +91,17 @@ func main() {
 		auth.POST("/login", handlers.LoginHandler)
 		auth.POST("/signup", handlers.SignupHandler)
 		auth.POST("/google", handlers.GoogleLoginHandler)
+		auth.POST("/google/login", handlers.GoogleLoginHandler) // Alias for user suggestion
 		auth.POST("/logout", handlers.LogoutHandler)
 
 		// Protected me route
 		auth.GET("/me", middleware.JWTMiddleware(), handlers.MeHandler)
 	}
+
+	// Root-level aliases (Failsafe for mismatched frontend paths)
+	r.POST("/google", handlers.GoogleLoginHandler)
+	r.POST("/login", handlers.LoginHandler)
+	r.GET("/me", middleware.JWTMiddleware(), handlers.MeHandler)
 
 	// Public Arena Routes
 	api.GET("/arenas", handlers.GetArenas)
@@ -146,8 +173,10 @@ func main() {
 
 		// Dashboard analytics
 		admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats)
+		admin.GET("/analytics", handlers.GetAdminDashboardStats)
 		admin.GET("/dashboard/recent", handlers.GetRecentActivity)
 	}
+
 
 	// Arena Test Routes (JWT required)
 	arena := api.Group("/arena")
