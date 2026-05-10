@@ -61,6 +61,27 @@ func ConnectDB() {
 	DB = database
 	log.Println("Database connection established (WAL mode enabled)")
 
+	// ── Explicit schema fixes ──
+	// SQLite AutoMigrate cannot add columns/indexes to existing tables.
+	// These are idempotent: they silently fail if the column/index already exists.
+	migrations := []string{
+		// Missing columns on test_attempts
+		"ALTER TABLE test_attempts ADD COLUMN totalQuestions integer DEFAULT 0",
+		"ALTER TABLE test_attempts ADD COLUMN timeTaken integer DEFAULT 0",
+		"ALTER TABLE test_attempts ADD COLUMN violationCount integer DEFAULT 0",
+		// Composite unique index — prevents duplicate (userId, testId) pairs
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_user_test ON test_attempts(userId, testId)",
+	}
+	for _, m := range migrations {
+		if err := database.Exec(m).Error; err != nil {
+			// Expected to fail if column/index already exists — not an error
+			log.Printf("[MIGRATE] Skipped (already exists): %s", m)
+		} else {
+			log.Printf("[MIGRATE] Applied: %s", m)
+		}
+	}
+	log.Println("[MIGRATE] Schema sync complete")
+
 	// Basic check to seed data if empty
 	SeedDB()
 	// Seed training questions (runs only once)
