@@ -24,6 +24,9 @@ func StartAutoSubmitWatcher() {
 
 // autoSubmitExpiredAttempts finds all un-submitted attempts whose test
 // window has closed, grades them, and marks them as auto-submitted.
+//
+// CRITICAL: This runs in a background goroutine. Every DB write must use
+// a transaction with a re-check to prevent racing with SubmitTestAttempt.
 func autoSubmitExpiredAttempts() {
 	// Find all active tests that have ended
 	var tests []models.Test
@@ -37,66 +40,129 @@ func autoSubmitExpiredAttempts() {
 		}
 
 		// Find un-submitted attempts for this ended test
+		// FIX: Exclude Go zero-time values that SQLite stores as real timestamps
 		var attempts []models.TestAttempt
-		database.DB.Where("testId = ? AND (submittedAt IS NULL OR submittedAt = '')", test.ID).Find(&attempts)
+		database.DB.Where(
+			"testId = ? AND (submittedAt IS NULL OR submittedAt = '' OR submittedAt < '0001-01-02')",
+			test.ID,
+		).Find(&attempts)
 
 		for _, attempt := range attempts {
+			// Double-check in Go (belt + suspenders)
 			if !attempt.SubmittedAt.IsZero() {
 				continue
 			}
 
-			// Grade MCQs
-			var questions []models.TestQuestion
-			database.DB.Preload("MCQOptions").Where("testId = ?", attempt.TestID).Find(&questions)
-
-			var submissions []models.TestSubmission
-			database.DB.Where("attemptId = ?", attempt.ID).Find(&submissions)
-
-			subMap := make(map[string]*models.TestSubmission)
-			for i := range submissions {
-				subMap[submissions[i].QuestionID] = &submissions[i]
-			}
-
-			totalScore := 0
-			for _, q := range questions {
-				sub, exists := subMap[q.ID]
-				if !exists {
-					continue
-				}
-
-				if q.Type == "mcq" {
-					for _, opt := range q.MCQOptions {
-						if opt.ID == sub.SelectedOptionID && opt.IsCorrect {
-							sub.Score = q.Points
-							sub.Verdict = "accepted"
-							break
-						}
-					}
-					if sub.Verdict != "accepted" {
-						sub.Score = 0
-						sub.Verdict = "wrong_answer"
-					}
-					database.DB.Save(sub)
-				}
-				totalScore += sub.Score
-			}
-
-			attempt.Score = totalScore
-			attempt.TotalQuestions = len(questions)
-			attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
-			attempt.SubmittedAt = time.Now()
-			attempt.IsAutoSubmitted = true
-			database.DB.Save(&attempt)
-
-			log.Printf("Auto-submitted attempt %s for test %s (score: %d)", attempt.ID, test.ID, totalScore)
-
-			// Notify via WebSocket
-			if ArenaSessionHub != nil {
-				ArenaSessionHub.BroadcastAutoSubmit(attempt.ID, totalScore)
-			}
-
-			// Broadcast leaderboard update
-			broadcastLeaderboard(attempt.TestID)
+			autoSubmitSingleAttempt(attempt, test)
 		}
 	}
+}
+
+// autoSubmitSingleAttempt grades and submits one attempt inside a transaction.
+// If the attempt was already submitted (by the user or a previous watcher tick),
+// the transaction rolls back harmlessly.
+func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
+	// Use a transaction to prevent racing with SubmitTestAttempt
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		log.Printf("[AUTO-SUBMIT] failed to begin tx for attempt %s: %v", attempt.ID, tx.Error)
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			log.Printf("[AUTO-SUBMIT] panic recovered for attempt %s: %v", attempt.ID, r)
+		}
+	}()
+
+	// Re-read the attempt inside the transaction to check if it was submitted
+	// between our initial query and now (race with SubmitTestAttempt)
+	var freshAttempt models.TestAttempt
+	if err := tx.Where("id = ?", attempt.ID).First(&freshAttempt).Error; err != nil {
+		tx.Rollback()
+		log.Printf("[AUTO-SUBMIT] attempt %s not found in tx: %v", attempt.ID, err)
+		return
+	}
+
+	// If already submitted, skip — someone else got there first
+	if !freshAttempt.SubmittedAt.IsZero() {
+		tx.Rollback()
+		log.Printf("[AUTO-SUBMIT] attempt %s already submitted, skipping", attempt.ID)
+		return
+	}
+
+	// Grade MCQs
+	var questions []models.TestQuestion
+	tx.Preload("MCQOptions").Where("testId = ?", freshAttempt.TestID).Find(&questions)
+
+	var submissions []models.TestSubmission
+	tx.Where("attemptId = ?", freshAttempt.ID).Find(&submissions)
+
+	subMap := make(map[string]*models.TestSubmission)
+	for i := range submissions {
+		subMap[submissions[i].QuestionID] = &submissions[i]
+	}
+
+	totalScore := 0
+	for _, q := range questions {
+		sub, exists := subMap[q.ID]
+		if !exists {
+			continue
+		}
+
+		if q.Type == "mcq" {
+			for _, opt := range q.MCQOptions {
+				if opt.ID == sub.SelectedOptionID && opt.IsCorrect {
+					sub.Score = q.Points
+					sub.Verdict = "accepted"
+					break
+				}
+			}
+			if sub.Verdict != "accepted" {
+				sub.Score = 0
+				sub.Verdict = "wrong_answer"
+			}
+			// FIX: Use targeted Updates() instead of Save() to avoid overwriting unrelated columns
+			tx.Model(sub).Updates(map[string]interface{}{
+				"score":   sub.Score,
+				"verdict": sub.Verdict,
+			})
+		}
+		totalScore += sub.Score
+	}
+
+	// FIX: Use targeted Updates() instead of Save() to avoid overwriting columns with zero values
+	submittedAt := time.Now()
+	result := tx.Model(&models.TestAttempt{}).Where("id = ?", freshAttempt.ID).Updates(map[string]interface{}{
+		"score":           totalScore,
+		"totalQuestions":  len(questions),
+		"timeTaken":       int(time.Since(freshAttempt.StartedAt).Seconds()),
+		"submittedAt":     submittedAt,
+		"isAutoSubmitted": true,
+	})
+	if result.Error != nil {
+		tx.Rollback()
+		log.Printf("[AUTO-SUBMIT] failed to update attempt %s: %v", freshAttempt.ID, result.Error)
+		return
+	}
+	if result.RowsAffected == 0 {
+		tx.Rollback()
+		log.Printf("[AUTO-SUBMIT] attempt %s: 0 rows affected, possible race", freshAttempt.ID)
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("[AUTO-SUBMIT] commit failed for attempt %s: %v", freshAttempt.ID, err)
+		return
+	}
+
+	log.Printf("[AUTO-SUBMIT] SUCCESS: attempt=%s test=%s score=%d", freshAttempt.ID, test.ID, totalScore)
+
+	// Notify via WebSocket (after commit, non-blocking)
+	if ArenaSessionHub != nil {
+		ArenaSessionHub.BroadcastAutoSubmit(freshAttempt.ID, totalScore)
+	}
+
+	// Broadcast leaderboard update (after commit)
+	broadcastLeaderboard(freshAttempt.TestID)
 }
