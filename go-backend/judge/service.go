@@ -88,10 +88,12 @@ func (s *ExecutionService) RunTestCases(code, language string, inputs []string, 
 		} else if res.Error != "" {
 			tcr.Pass = false
 		} else {
-			tcr.Pass = trimCompare(tcr.Actual, tcr.Expected)
+			tcr.Pass = Normalize(tcr.Actual) == Normalize(tcr.Expected)
 		}
 
 		results[i] = tcr
+		log.Printf("[SERVICE] testcase %d lang=%s pass=%v actual=%q expected=%q",
+			i, language, tcr.Pass, Normalize(tcr.Actual), Normalize(tcr.Expected))
 	}
 	return results
 }
@@ -105,11 +107,7 @@ type TestCaseResult struct {
 	ExecResult ExecutionResult `json:"execResult"`
 }
 
-// trimCompare normalizes both strings and compares line-by-line.
-// Strips \r, trims trailing whitespace per line, and removes trailing blank lines.
-func trimCompare(a, b string) bool {
-	return Normalize(a) == Normalize(b)
-}
+
 
 // Normalize prepares a string for comparison:
 // 1. Replace \r\n with \n and strip stray \r
