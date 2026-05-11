@@ -10,7 +10,6 @@ import {
   Play,
   Radio,
   Send,
-  Shield,
   Swords,
   Target,
   Trophy,
@@ -20,7 +19,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { API_URL, WS_BASE } from "@/lib/api-config"
-import { useAntiCheat } from "@/hooks/useAntiCheat"
+
 
 // Removed hardcoded API constant
 
@@ -127,7 +126,13 @@ const statusStyle: Record<string, { color: string; bg: string; label: string }> 
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════
 
-export function TestArena({ onActiveChange }: { onActiveChange?: (active: boolean) => void }) {
+interface TestArenaProps {
+  onActiveChange?: (active: boolean) => void
+  editorRef?: React.MutableRefObject<HTMLTextAreaElement | null>
+  submitHandlerRef?: React.MutableRefObject<(() => void) | null>
+}
+
+export function TestArena({ onActiveChange, editorRef, submitHandlerRef }: TestArenaProps) {
   // ── Top-level state: which view to show ──
   const [attemptId, setAttemptId] = useState<string | null>(null)
   const [testId, setTestId] = useState<string | null>(null)
@@ -166,7 +171,7 @@ export function TestArena({ onActiveChange }: { onActiveChange?: (active: boolea
   }
 
   if (attemptId && testId) {
-    return <ActiveTest attemptId={attemptId} testId={testId} onExit={handleExit} />
+    return <ActiveTest attemptId={attemptId} testId={testId} onExit={handleExit} editorRef={editorRef} submitHandlerRef={submitHandlerRef} />
   }
 
   return <TestList onJoined={handleJoined} />
@@ -365,7 +370,15 @@ function TestList({ onJoined }: { onJoined: (attemptId: string, testId: string) 
 // VIEW 2 — Active Test
 // ═══════════════════════════════════════════════
 
-function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: string; onExit: () => void }) {
+interface ActiveTestProps {
+  attemptId: string
+  testId: string
+  onExit: () => void
+  editorRef?: React.MutableRefObject<HTMLTextAreaElement | null>
+  submitHandlerRef?: React.MutableRefObject<(() => void) | null>
+}
+
+function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: ActiveTestProps) {
   const [loading, setLoading] = useState(true)
   const [questions, setQuestions] = useState<Question[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -386,30 +399,6 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
   const [compileError, setCompileError] = useState<string | null>(null)
   const [outputTab, setOutputTab] = useState<"results" | "output">("results")
   const draftSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // ── Anti-cheat hook ──
-  // Fullscreen is already entered by handleJoin (user gesture).
-  // The hook monitors for exits and arms after a grace period.
-  const { violationCount, warningMessage, showWarning, requestFullscreen } = useAntiCheat({
-    attemptId,
-    testId,
-    remainingSeconds,
-    onAutoSubmit: () => handleSubmitAttempt(),
-    enabled: !loading && !submitted,
-  })
-
-  // Arm anti-cheat monitoring once test data loads.
-  // Fullscreen was already requested in the Join click handler.
-  // This calls requestFullscreen() which will either re-enter or just arm the hook.
-  const hasArmedRef = useRef(false)
-  useEffect(() => {
-    if (!loading && !submitted && !hasArmedRef.current) {
-      hasArmedRef.current = true
-      // Don't request fullscreen again — it's already active from handleJoin.
-      // Just call requestFullscreen to arm the monitoring (it's idempotent).
-      requestFullscreen()
-    }
-  }, [loading, submitted, requestFullscreen])
 
   // Fetch attempt data
   const fetchAttempt = useCallback(async () => {
@@ -721,6 +710,18 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
     }
   }
 
+  // Expose submit handler to parent via ref so anti-cheat can trigger it
+  useEffect(() => {
+    if (submitHandlerRef) {
+      submitHandlerRef.current = handleSubmitAttempt
+    }
+    return () => {
+      if (submitHandlerRef) {
+        submitHandlerRef.current = null
+      }
+    }
+  }) // runs every render to keep closure fresh
+
   // ── Loading state ──
   if (loading) {
     return (
@@ -767,39 +768,7 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
     <div className="relative min-h-[60vh] flex flex-col">
       <div className="absolute inset-0 grid-bg opacity-30" />
 
-      {/* ── Anti-cheat warning overlay ── */}
-      {showWarning && warningMessage && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className={`relative border-2 px-8 py-6 max-w-lg text-center ${
-            violationCount >= 3
-              ? "border-neon-pink bg-neon-pink/10 shadow-[0_0_40px_rgba(255,50,100,0.3)]"
-              : violationCount === 2
-                ? "border-neon-pink/80 bg-neon-pink/5 shadow-[0_0_30px_rgba(255,50,100,0.2)]"
-                : "border-neon-yellow/80 bg-neon-yellow/5 shadow-[0_0_30px_rgba(255,220,50,0.2)]"
-          }`}>
-            <div className="flex items-center justify-center gap-2 mb-3">
-              <Shield className={`h-6 w-6 ${
-                violationCount >= 2 ? "text-neon-pink animate-pulse" : "text-neon-yellow animate-pulse"
-              }`} />
-              <span className={`font-mono text-[10px] tracking-[0.3em] uppercase ${
-                violationCount >= 2 ? "text-neon-pink" : "text-neon-yellow"
-              }`}>
-                ANTI-CHEAT SYSTEM
-              </span>
-            </div>
-            <p className={`font-mono text-sm leading-relaxed ${
-              violationCount >= 2 ? "text-neon-pink" : "text-neon-yellow"
-            }`}>
-              {warningMessage}
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${violationCount >= 1 ? "bg-neon-pink" : "bg-panel-border"}`} />
-              <div className={`h-2 w-2 rounded-full ${violationCount >= 2 ? "bg-neon-pink" : "bg-panel-border"}`} />
-              <div className={`h-2 w-2 rounded-full ${violationCount >= 3 ? "bg-neon-pink" : "bg-panel-border"}`} />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Anti-cheat warning overlay is managed by the parent arena page */}
 
       {/* ── Timer bar ── */}
       <div className="relative z-10 border-b border-panel-border bg-panel-bg/80 backdrop-blur-sm">
@@ -1016,8 +985,8 @@ function ActiveTest({ attemptId, testId, onExit }: { attemptId: string; testId: 
                         {/* Code textarea */}
                         <textarea
                           ref={(el) => {
-                            // Store ref for cursor positioning
-                            if (el) (el as any).__editorRef = true
+                            // Wire parent's editorRef so anti-cheat can refocus
+                            if (editorRef) editorRef.current = el
                           }}
                           value={code}
                           onChange={(e) => handleCodeChange(e.target.value)}
