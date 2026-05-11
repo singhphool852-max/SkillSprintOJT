@@ -24,6 +24,7 @@ type UserWrongQuestion struct {
 	PointsLost     int       `gorm:"column:pointsLost" json:"pointsLost"`
 	PointsPossible int       `gorm:"column:pointsPossible" json:"pointsPossible"`
 	ReviewCount    int       `gorm:"column:reviewCount;default:0" json:"reviewCount"`
+	CorrectStreak  int       `gorm:"column:correctStreak;default:0" json:"correctStreak"` // Number of times answered correctly in training
 	LastReviewedAt time.Time `gorm:"column:lastReviewedAt" json:"lastReviewedAt"`
 	MasteredAt     time.Time `gorm:"column:masteredAt" json:"masteredAt"`
 	CreatedAt      time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`

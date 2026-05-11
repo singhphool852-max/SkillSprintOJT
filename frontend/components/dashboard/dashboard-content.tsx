@@ -31,6 +31,7 @@ interface DashboardData {
     highScore: number
     avgScore: number
     totalScore: number
+    unmasteredMistakes: number
   }
   globalRank: number
   totalParticipants: number
@@ -44,6 +45,12 @@ interface DashboardData {
     totalScore: number
     maxPossible: number
     percentage: number
+  }>
+  weakTopicStats: Array<{
+    topicId: string
+    topicName: string
+    accuracyPercent: number
+    weakLevel: string
   }>
   strongPoints: string[]
   weakPoints: string[]
@@ -248,6 +255,83 @@ export function DashboardContent() {
               <Trophy className="h-4 w-4" />
               VIEW LEADERBOARD
             </Link>
+          </div>
+        </div>
+
+        {/* Adaptive Practice Section (NEW) */}
+        <div className="grid gap-6 lg:grid-cols-3 mb-6">
+          <div className="lg:col-span-2 border border-panel-border bg-panel-bg/60 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <Brain className="h-4 w-4 text-neon-cyan" />
+                <span className="font-mono text-[11px] tracking-[0.2em] text-foreground uppercase">
+                  ADAPTIVE INTELLIGENCE
+                </span>
+              </div>
+              <div className="px-2 py-0.5 border border-neon-cyan/20 bg-neon-cyan/5">
+                <span className="font-mono text-[9px] text-neon-cyan uppercase tracking-wider">AI POWERED</span>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="border border-panel-border/30 bg-secondary/5 p-4 flex flex-col justify-between">
+                <div>
+                  <h3 className="font-mono text-sm font-bold text-foreground mb-1 uppercase">PRACTICE MISTAKES</h3>
+                  <p className="text-[10px] text-muted-foreground font-mono leading-relaxed mb-4">
+                    Target your weaknesses by retrying {data.stats.unmasteredMistakes || 0} questions you previously answered incorrectly.
+                  </p>
+                </div>
+                <Link
+                  href="/train?mode=mistakes"
+                  className="w-full py-2 bg-neon-pink/10 border border-neon-pink/30 text-neon-pink font-mono text-[10px] tracking-widest text-center hover:bg-neon-pink/20 transition-all uppercase"
+                >
+                  START RECOVERY SESSION
+                </Link>
+              </div>
+
+              <div className="border border-neon-cyan/20 bg-neon-cyan/5 p-4 flex flex-col justify-between">
+                <div>
+                  <h3 className="font-mono text-sm font-bold text-neon-cyan mb-1 uppercase">ADAPTIVE TRAINING</h3>
+                  <p className="text-[10px] text-muted-foreground font-mono leading-relaxed mb-4">
+                    SkillSprint AI will generate a personalized path with similar questions based on your weak areas.
+                  </p>
+                </div>
+                <Link
+                  href="/train?mode=adaptive"
+                  className="w-full py-2 bg-neon-cyan text-deep-bg font-mono text-[10px] font-bold tracking-widest text-center hover:bg-neon-cyan/90 transition-all uppercase"
+                >
+                  START ADAPTIVE SESSION
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="border border-panel-border bg-panel-bg/60 p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <TrendingDown className="h-4 w-4 text-neon-pink" />
+              <span className="font-mono text-[11px] tracking-[0.2em] text-foreground uppercase">
+                WEAK AREAS
+              </span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {data.weakTopicStats?.map((topic) => (
+                <div key={topic.topicId} className="p-3 border border-panel-border/30 bg-secondary/5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[11px] font-bold text-foreground uppercase">{topic.topicName}</span>
+                    <span className="font-mono text-[10px] text-neon-pink uppercase">{topic.accuracyPercent.toFixed(0)}% ACC</span>
+                  </div>
+                  <div className="w-full h-1 bg-panel-border/30 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-neon-pink" 
+                      style={{ width: `${topic.accuracyPercent}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              {(!data.weakTopicStats || data.weakTopicStats.length === 0) && (
+                <p className="font-mono text-[10px] text-muted-foreground text-center py-4">NO CRITICAL WEAK AREAS IDENTIFIED YET.</p>
+              )}
+            </div>
           </div>
         </div>
 

@@ -269,12 +269,25 @@ func GetUserDashboardFull(c *gin.Context) {
 	var activeTestCount int64
 	database.DB.Model(&models.Test{}).Where("isActive = ? AND isPublished = ?", true, true).Count(&activeTestCount)
 
+	// ── 8. Mistake stats (NEW) ────────────────────────
+	var unmasteredMistakes int64
+	database.DB.Model(&models.UserWrongQuestion{}).
+		Where("userId = ? AND (masteredAt IS NULL OR masteredAt < '0001-01-02')", userID).
+		Count(&unmasteredMistakes)
+
+	var weakTopicStats []models.UserTopicStats
+	database.DB.Where("userId = ?", userID).
+		Order("accuracyPercent ASC").
+		Limit(5).
+		Find(&weakTopicStats)
+
 	c.JSON(http.StatusOK, gin.H{
 		"stats": gin.H{
-			"totalAttempts":  overallStats.SubmittedCount,
-			"highScore":      overallStats.HighScore,
-			"avgScore":       math.Round(overallStats.AvgScore*100) / 100,
-			"totalScore":     overallStats.TotalScore,
+			"totalAttempts":      overallStats.SubmittedCount,
+			"highScore":          overallStats.HighScore,
+			"avgScore":           math.Round(overallStats.AvgScore*100) / 100,
+			"totalScore":         overallStats.TotalScore,
+			"unmasteredMistakes": unmasteredMistakes,
 		},
 		"globalRank":        rank,
 		"totalParticipants": totalParticipants,
@@ -282,6 +295,7 @@ func GetUserDashboardFull(c *gin.Context) {
 		"topicAnalysis":     topicAnalysis,
 		"strongPoints":      strongPoints,
 		"weakPoints":        weakPoints,
+		"weakTopicStats":    weakTopicStats,
 		"performanceTrend":  performanceTrend,
 		"completedTests":    completedTests,
 		"activeTestCount":   activeTestCount,

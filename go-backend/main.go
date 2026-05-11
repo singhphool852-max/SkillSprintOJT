@@ -143,6 +143,10 @@ func main() {
 		// Training module additions
 		protected.POST("/train/upload-notes", handlers.UploadNotes)
 		protected.GET("/training/session/:id", handlers.GetTrainingSession)
+
+		// Adaptive Training logic
+		protected.POST("/training/adaptive/start", handlers.StartAdaptiveTraining)
+		protected.POST("/training/adaptive/submit", handlers.SubmitAdaptiveAnswer)
 	}
 
 	// Admin Routes (JWT + Admin role required)
@@ -181,6 +185,7 @@ func main() {
 		admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats)
 		admin.GET("/analytics", handlers.GetAdminDashboardStats)
 		admin.GET("/dashboard/recent", handlers.GetRecentActivity)
+		admin.GET("/analytics/mistakes", handlers.GetMistakesAnalytics)
 
 		// Test-specific analytics & attempt inspection
 		admin.GET("/tests/:id/attempts", handlers.GetTestAttemptsList)

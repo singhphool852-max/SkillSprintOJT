@@ -11,7 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// ──────────────────────────────────────────────
+// ExtractWrongQuestionsManual is an exported wrapper for testing
+func ExtractWrongQuestionsManual(attempt models.TestAttempt) {
+	extractWrongQuestions(attempt)
+}
+
+// UpdateUserTopicStatsManual is an exported wrapper for testing
+func UpdateUserTopicStatsManual(userID string, testID string) {
+	updateUserTopicStats(userID, testID)
+}
+
 // extractWrongQuestions — called after test submission.
 // Creates UserWrongQuestion rows for every wrong/skipped answer.
 // ──────────────────────────────────────────────
