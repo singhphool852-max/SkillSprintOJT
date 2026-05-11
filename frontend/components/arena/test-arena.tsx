@@ -127,7 +127,7 @@ const statusStyle: Record<string, { color: string; bg: string; label: string }> 
 // ═══════════════════════════════════════════════
 
 interface TestArenaProps {
-  onActiveChange?: (active: boolean) => void
+  onActiveChange?: (active: boolean, sessionId?: string) => void
   editorRef?: React.MutableRefObject<HTMLTextAreaElement | null>
   submitHandlerRef?: React.MutableRefObject<(() => void) | null>
 }
@@ -144,7 +144,7 @@ export function TestArena({ onActiveChange, editorRef, submitHandlerRef }: TestA
     if (saved && savedTest) {
       setAttemptId(saved)
       setTestId(savedTest)
-      onActiveChange?.(true)
+      onActiveChange?.(true, saved)
       // Re-enter fullscreen for resumed session (won't arm — that happens inside ActiveTest)
       document.documentElement.requestFullscreen?.().catch(() => {})
     }
@@ -155,7 +155,7 @@ export function TestArena({ onActiveChange, editorRef, submitHandlerRef }: TestA
     setTestId(tId)
     localStorage.setItem("testArena_attemptId", aId)
     localStorage.setItem("testArena_testId", tId)
-    onActiveChange?.(true)
+    onActiveChange?.(true, aId)
   }
 
   function handleExit() {
@@ -390,7 +390,7 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
 
   // Code editing state
   const [code, setCode] = useState("")
-  const [language, setLanguage] = useState("python")
+  const [language, setLanguage] = useState("python3")
   const [langTemplates, setLangTemplates] = useState<Record<string, string>>({})
   const [runResults, setRunResults] = useState<RunCaseResult[] | null>(null)
   const [submitResult, setSubmitResult] = useState<{ verdict: string; passedCount: number; totalCount: number } | null>(null)
@@ -551,10 +551,10 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
       const existingSub = submissions.find((s) => s.questionId === q.id && s.type === "coding")
       if (existingSub?.code) {
         setCode(existingSub.code)
-        setLanguage(existingSub.language || "python")
+        setLanguage(existingSub.language || "python3")
       } else {
-        setLanguage("python")
-        setCode(langTemplates["python"] || "")
+        setLanguage("python3")
+        setCode(langTemplates["python3"] || "")
       }
     }
   }, [currentQ, questions]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -657,6 +657,7 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
     setSubmitResult(null)
     setRunResults(null)
     setCompileError(null)
+    console.log("[SUBMIT] language =", language)
     try {
       const res = await fetch(`${API_URL}/api/arena/submissions/code`, {
         method: "POST",
@@ -765,7 +766,7 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
   const isDanger = remainingSeconds <= 60
 
   return (
-    <div className="relative min-h-[60vh] flex flex-col">
+    <div className="relative h-full flex flex-col flex-1 min-h-0">
       <div className="absolute inset-0 grid-bg opacity-30" />
 
       {/* Anti-cheat warning overlay is managed by the parent arena page */}
@@ -825,8 +826,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
       </div>
 
       {/* ── Main content ── */}
-      <div className="relative z-10 flex-1 mx-auto max-w-6xl w-full px-4 py-6">
-        <div className="flex gap-6">
+      <div className="relative z-10 flex-1 mx-auto w-full px-4 py-6 max-w-none flex flex-col min-h-0">
+        <div className="flex gap-6 flex-1 min-h-0">
 
           {/* ── Question navigation sidebar ── */}
           <div className="flex flex-col gap-2 shrink-0">
@@ -860,34 +861,32 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
           </div>
 
           {/* ── Question area ── */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
             {currentQuestion && (
               <>
-                {/* Question header */}
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    {currentQuestion.type === "mcq" ? (
-                      <Radio className="h-4 w-4 text-neon-cyan" />
-                    ) : (
-                      <Code2 className="h-4 w-4 text-neon-pink" />
-                    )}
-                    <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-                      {currentQuestion.type === "mcq" ? "MULTIPLE CHOICE" : "CODING CHALLENGE"}
-                    </span>
-                  </div>
-                  <span className="font-mono text-[10px] tracking-wider text-neon-yellow">
-                    {currentQuestion.points} PTS
-                  </span>
-                </div>
+                {/* ── MCQ VIEW ── */}
+                {currentQuestion.type === "mcq" && (
+                  <div className="flex flex-col overflow-y-auto pr-4 max-w-4xl mx-auto w-full">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <Radio className="h-4 w-4 text-neon-cyan" />
+                        <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                          MULTIPLE CHOICE
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] tracking-wider text-neon-yellow">
+                        {currentQuestion.points} PTS
+                      </span>
+                    </div>
 
-                <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
-                  {currentQuestion.title}
-                </h3>
-                {currentQuestion.description && (
-                  <p className="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
-                    {currentQuestion.description}
-                  </p>
-                )}
+                    <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
+                      {currentQuestion.title}
+                    </h3>
+                    {currentQuestion.description && (
+                      <p className="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
+                        {currentQuestion.description}
+                      </p>
+                    )}
 
                 {/* ── MCQ ── */}
                 {currentQuestion.type === "mcq" && currentQuestion.mcqOptions && (
@@ -912,11 +911,35 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                   </div>
                 )}
 
-                {/* ── Coding ── */}
+                  </div>
+                )}
+
+                {/* ── CODING VIEW ── */}
                 {currentQuestion.type === "coding" && (
-                  <div className="flex flex-col gap-0 h-full">
-                    {/* ── Problem Description Panel ── */}
-                    <div className="border border-panel-border bg-panel-bg/40 p-4 mb-3">
+                  <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0 w-full">
+                    
+                    {/* ── PANEL 1: Problem Description (Left 35%) ── */}
+                    <div className="lg:w-[35%] flex flex-col min-h-0 border border-panel-border bg-panel-bg/40 p-4 overflow-y-auto">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center gap-2">
+                          <Code2 className="h-4 w-4 text-neon-pink" />
+                          <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                            CODING CHALLENGE
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] tracking-wider text-neon-yellow">
+                          {currentQuestion.points} PTS
+                        </span>
+                      </div>
+
+                      <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
+                        {currentQuestion.title}
+                      </h3>
+                      {currentQuestion.description && (
+                        <p className="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
+                          {currentQuestion.description}
+                        </p>
+                      )}
                       {/* Constraints */}
                       {currentQuestion.codingDetail?.constraints && (
                         <div className="mb-3">
@@ -957,10 +980,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                       )}
                     </div>
 
-                    {/* ── Code Editor + Terminal Split ── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 flex-1 min-h-0">
-                      {/* ── Left: Editor ── */}
-                      <div className="flex flex-col border border-panel-border bg-deep-bg/60">
+                    {/* ── PANEL 2: Code Editor (Middle 40%) ── */}
+                    <div className="lg:w-[40%] flex flex-col min-h-0 border border-panel-border bg-deep-bg/60">
                         {/* Editor toolbar */}
                         <div className="flex items-center justify-between px-3 py-2 border-b border-panel-border bg-panel-bg/60">
                           <div className="flex items-center gap-3">
@@ -995,26 +1016,65 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                           style={{ fontFamily: "'Geist Mono', 'Fira Code', 'Consolas', monospace", tabSize: 4, MozTabSize: 4 } as React.CSSProperties}
                           placeholder="// Write your solution here..."
                           onKeyDown={(e) => {
-                            const target = e.target as HTMLTextAreaElement
+                            const target = e.currentTarget
                             const start = target.selectionStart
                             const end = target.selectionEnd
+                            const value = target.value
 
-                            // Tab key: insert 4 spaces (or dedent with Shift+Tab)
+                            const pairs: Record<string, string> = {
+                              "{": "}",
+                              "(": ")",
+                              "[": "]",
+                              '"': '"',
+                              "'": "'",
+                              "`": "`",
+                            }
+
+                            // 1. AUTO-CLOSE: insert pair and place cursor between them
+                            if (pairs[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                              e.preventDefault()
+                              const open = e.key
+                              const close = pairs[open]
+                              const before = value.slice(0, start)
+                              const selected = value.slice(start, end)
+                              const after = value.slice(end)
+
+                              const newValue = before + open + selected + close + after
+                              const newCursor = start + 1 + selected.length
+
+                              handleCodeChange(newValue)
+                              requestAnimationFrame(() => {
+                                target.selectionStart = target.selectionEnd = newCursor
+                              })
+                              return
+                            }
+
+                            // 2. SKIP OVER: if next char is closing bracket and user types it, skip
+                            const closers = new Set([")", "]", "}", '"', "'", "`"])
+                            if (
+                              closers.has(e.key) &&
+                              value[start] === e.key &&
+                              start === end &&
+                              !e.ctrlKey && !e.metaKey
+                            ) {
+                              e.preventDefault()
+                              target.selectionStart = target.selectionEnd = start + 1
+                              return
+                            }
+
+                            // 3. Tab key: insert 4 spaces (or dedent with Shift+Tab)
                             if (e.key === "Tab") {
                               e.preventDefault()
-                              e.stopPropagation() // prevent anti-cheat from catching this
-
                               if (e.shiftKey) {
                                 // Shift+Tab: dedent — remove up to 4 leading spaces from current line
-                                const before = code.substring(0, start)
-                                const after = code.substring(end)
+                                const before = value.substring(0, start)
                                 const lineStart = before.lastIndexOf("\n") + 1
-                                const linePrefix = code.substring(lineStart, start)
+                                const linePrefix = value.substring(lineStart, start)
                                 const leadingMatch = linePrefix.match(/^( {1,4})/)
                                 if (leadingMatch) {
                                   const removeCount = leadingMatch[1].length
-                                  const newCode = code.substring(0, lineStart) + code.substring(lineStart + removeCount)
-                                  handleCodeChange(newCode)
+                                  const newValue = value.substring(0, lineStart) + value.substring(lineStart + removeCount)
+                                  handleCodeChange(newValue)
                                   const newPos = Math.max(lineStart, start - removeCount)
                                   requestAnimationFrame(() => {
                                     target.selectionStart = target.selectionEnd = newPos
@@ -1022,8 +1082,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                                 }
                               } else {
                                 // Tab: insert 4 spaces
-                                const newCode = code.substring(0, start) + "    " + code.substring(end)
-                                handleCodeChange(newCode)
+                                const newValue = value.substring(0, start) + "    " + value.substring(end)
+                                handleCodeChange(newValue)
                                 requestAnimationFrame(() => {
                                   target.selectionStart = target.selectionEnd = start + 4
                                 })
@@ -1031,22 +1091,43 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                               return
                             }
 
-                            // Enter key: auto-indent
-                            if (e.key === "Enter") {
+                            // 4. Enter key: auto-indent + expand brackets
+                            if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
                               e.preventDefault()
-                              const before = code.substring(0, start)
-                              const after = code.substring(end)
-                              const currentLine = before.split("\n").pop() || ""
-                              // Get leading whitespace of current line
+                              const before = value.slice(0, start)
+                              const after = value.slice(end)
+                              const lastNewLine = before.lastIndexOf("\n")
+                              const currentLine = before.slice(lastNewLine + 1)
+                              
                               const indentMatch = currentLine.match(/^(\s*)/)
                               let indent = indentMatch ? indentMatch[1] : ""
-                              // Add extra indent if line ends with { : ( ,
+                              
+                              const charBefore = value[start - 1]
+                              const charAfter = value[start]
+                              const isExpandable =
+                                (charBefore === "{" && charAfter === "}") ||
+                                (charBefore === "(" && charAfter === ")") ||
+                                (charBefore === "[" && charAfter === "]")
+
+                              if (isExpandable) {
+                                // Expand: add extra line with indent+4, and closing line with original indent
+                                const newValue = before + "\n" + indent + "    " + "\n" + indent + after
+                                handleCodeChange(newValue)
+                                const newPos = start + 1 + indent.length + 4
+                                requestAnimationFrame(() => {
+                                  target.selectionStart = target.selectionEnd = newPos
+                                })
+                                return
+                              }
+
+                              // Standard auto-indent
                               const trimmedLine = currentLine.trimEnd()
                               if (trimmedLine.endsWith("{") || trimmedLine.endsWith(":") || trimmedLine.endsWith("(") || trimmedLine.endsWith(",")) {
                                 indent += "    "
                               }
-                              const newCode = before + "\n" + indent + after
-                              handleCodeChange(newCode)
+                              
+                              const newValue = before + "\n" + indent + after
+                              handleCodeChange(newValue)
                               const newPos = start + 1 + indent.length
                               requestAnimationFrame(() => {
                                 target.selectionStart = target.selectionEnd = newPos
@@ -1054,16 +1135,29 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                               return
                             }
 
-                            // Backspace: delete 4 spaces if cursor is at indent boundary
+                            // 5. Backspace: delete both chars if cursor is between a pair OR delete 4 spaces for dedent
                             if (e.key === "Backspace" && start === end && start > 0) {
-                              const before = code.substring(0, start)
+                              const pairsBefore = ["{}", "()", "[]", '""', "''", "``"]
+                              const charsAround = value.slice(start - 1, start + 1)
+                              
+                              if (pairsBefore.includes(charsAround)) {
+                                e.preventDefault()
+                                const newValue = value.slice(0, start - 1) + value.slice(start + 1)
+                                handleCodeChange(newValue)
+                                requestAnimationFrame(() => {
+                                  target.selectionStart = target.selectionEnd = start - 1
+                                })
+                                return
+                              }
+
+                              // Check for 4-space dedent
+                              const before = value.substring(0, start)
                               const lineStart = before.lastIndexOf("\n") + 1
                               const linePrefix = before.substring(lineStart)
-                              // Only if the prefix is all spaces and length is multiple of 4
                               if (linePrefix.length > 0 && linePrefix.length % 4 === 0 && /^ +$/.test(linePrefix)) {
                                 e.preventDefault()
-                                const newCode = code.substring(0, start - 4) + code.substring(end)
-                                handleCodeChange(newCode)
+                                const newValue = value.substring(0, start - 4) + value.substring(end)
+                                handleCodeChange(newValue)
                                 requestAnimationFrame(() => {
                                   target.selectionStart = target.selectionEnd = start - 4
                                 })
@@ -1096,8 +1190,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                         </div>
                       </div>
 
-                      {/* ── Right: Terminal / Output Panel ── */}
-                      <div className="flex flex-col border border-panel-border border-l-0 lg:border-l-0 bg-deep-bg/60">
+                    {/* ── PANEL 3: Terminal / Output (Right 25%) ── */}
+                    <div className="lg:w-[25%] flex flex-col min-h-0 border border-panel-border bg-deep-bg/60">
                         {/* Terminal tabs */}
                         <div className="flex items-center border-b border-panel-border bg-panel-bg/60">
                           <button
@@ -1231,7 +1325,6 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                           )}
                         </div>
                       </div>
-                    </div>
                   </div>
                 )}
               </>

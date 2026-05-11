@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,7 +73,9 @@ func normalizeInput(s string) string {
 
 // normalizeOutput strips \r from output so comparison is consistent.
 func normalizeOutput(s string) string {
-	return strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
 }
 
 // compile runs a compilation command with a generous timeout.
@@ -89,6 +92,8 @@ func compile(args []string, timeoutSec int) (string, error) {
 // Each call uses its own isolated temp directory for concurrency safety.
 // The execution timeout only covers the run phase, NOT compilation.
 func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (ExecutionResult, error) {
+	log.Printf("[EXECUTOR] executing language: %s", language)
+	
 	if timeLimitMs <= 0 {
 		timeLimitMs = 2000
 	}
@@ -146,7 +151,7 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		compOut, compErr := compile([]string{"javac", srcPath}, 15)
+		compOut, compErr := compile([]string{"javac", "-d", tmpDir, srcPath}, 15)
 		if compErr != nil {
 			return ExecutionResult{
 				Output:     compOut,
@@ -170,19 +175,9 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
 			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
 		}
-		binPath := filepath.Join(tmpDir, "solution_go")
-		compOut, compErr := compile([]string{"go", "build", "-o", binPath, srcPath}, 30)
-		if compErr != nil {
-			return ExecutionResult{
-				Output:     compOut,
-				CompileOut: compOut,
-				ExitCode:   1,
-				Error:      "compilation_error",
-				ErrorType:  "compilation_error",
-			}, nil
-		}
-		runArgs = []string{binPath}
+		runArgs = []string{"go", "run", srcPath}
 		runDir = tmpDir
+		timeLimitMs += 10000
 
 	default:
 		return ExecutionResult{
@@ -216,6 +211,8 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 
 	stdout := normalizeOutput(stdoutBuf.String())
 	stderr := stderrBuf.String()
+	
+	log.Printf("[EXECUTOR] lang=%s duration=%dms stderr=%q", language, duration, stderr)
 
 	// Check for timeout FIRST
 	if ctx.Err() == context.DeadlineExceeded {
