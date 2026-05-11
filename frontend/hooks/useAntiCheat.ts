@@ -169,6 +169,9 @@ export function useAntiCheat({
       if (!isArmedRef.current) return
       const ctrl = e.ctrlKey || e.metaKey
 
+      // RULE: Only intercept if Ctrl/Meta/F12 is involved. Plain characters must pass.
+      if (!ctrl && e.key !== "F12" && !e.altKey) return
+
       // F12
       if (e.key === "F12") {
         e.preventDefault()
@@ -217,11 +220,11 @@ export function useAntiCheat({
       }
     }
 
-    document.addEventListener("keydown", handleKeyDown, true)
+    window.addEventListener("keydown", handleKeyDown, false)
     document.addEventListener("contextmenu", handleContextMenu, true)
 
     const removeListeners = () => {
-      document.removeEventListener("keydown", handleKeyDown, true)
+      window.removeEventListener("keydown", handleKeyDown, false)
       document.removeEventListener("contextmenu", handleContextMenu, true)
     }
     cleanupFnsRef.current.push(removeListeners)

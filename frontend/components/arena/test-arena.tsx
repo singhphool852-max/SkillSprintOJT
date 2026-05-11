@@ -1016,26 +1016,65 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                           style={{ fontFamily: "'Geist Mono', 'Fira Code', 'Consolas', monospace", tabSize: 4, MozTabSize: 4 } as React.CSSProperties}
                           placeholder="// Write your solution here..."
                           onKeyDown={(e) => {
-                            const target = e.target as HTMLTextAreaElement
+                            const target = e.currentTarget
                             const start = target.selectionStart
                             const end = target.selectionEnd
+                            const value = target.value
 
-                            // Tab key: insert 4 spaces (or dedent with Shift+Tab)
+                            const pairs: Record<string, string> = {
+                              "{": "}",
+                              "(": ")",
+                              "[": "]",
+                              '"': '"',
+                              "'": "'",
+                              "`": "`",
+                            }
+
+                            // 1. AUTO-CLOSE: insert pair and place cursor between them
+                            if (pairs[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                              e.preventDefault()
+                              const open = e.key
+                              const close = pairs[open]
+                              const before = value.slice(0, start)
+                              const selected = value.slice(start, end)
+                              const after = value.slice(end)
+
+                              const newValue = before + open + selected + close + after
+                              const newCursor = start + 1 + selected.length
+
+                              handleCodeChange(newValue)
+                              requestAnimationFrame(() => {
+                                target.selectionStart = target.selectionEnd = newCursor
+                              })
+                              return
+                            }
+
+                            // 2. SKIP OVER: if next char is closing bracket and user types it, skip
+                            const closers = new Set([")", "]", "}", '"', "'", "`"])
+                            if (
+                              closers.has(e.key) &&
+                              value[start] === e.key &&
+                              start === end &&
+                              !e.ctrlKey && !e.metaKey
+                            ) {
+                              e.preventDefault()
+                              target.selectionStart = target.selectionEnd = start + 1
+                              return
+                            }
+
+                            // 3. Tab key: insert 4 spaces (or dedent with Shift+Tab)
                             if (e.key === "Tab") {
                               e.preventDefault()
-                              e.stopPropagation() // prevent anti-cheat from catching this
-
                               if (e.shiftKey) {
                                 // Shift+Tab: dedent — remove up to 4 leading spaces from current line
-                                const before = code.substring(0, start)
-                                const after = code.substring(end)
+                                const before = value.substring(0, start)
                                 const lineStart = before.lastIndexOf("\n") + 1
-                                const linePrefix = code.substring(lineStart, start)
+                                const linePrefix = value.substring(lineStart, start)
                                 const leadingMatch = linePrefix.match(/^( {1,4})/)
                                 if (leadingMatch) {
                                   const removeCount = leadingMatch[1].length
-                                  const newCode = code.substring(0, lineStart) + code.substring(lineStart + removeCount)
-                                  handleCodeChange(newCode)
+                                  const newValue = value.substring(0, lineStart) + value.substring(lineStart + removeCount)
+                                  handleCodeChange(newValue)
                                   const newPos = Math.max(lineStart, start - removeCount)
                                   requestAnimationFrame(() => {
                                     target.selectionStart = target.selectionEnd = newPos
@@ -1043,8 +1082,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                                 }
                               } else {
                                 // Tab: insert 4 spaces
-                                const newCode = code.substring(0, start) + "    " + code.substring(end)
-                                handleCodeChange(newCode)
+                                const newValue = value.substring(0, start) + "    " + value.substring(end)
+                                handleCodeChange(newValue)
                                 requestAnimationFrame(() => {
                                   target.selectionStart = target.selectionEnd = start + 4
                                 })
@@ -1052,22 +1091,43 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                               return
                             }
 
-                            // Enter key: auto-indent
-                            if (e.key === "Enter") {
+                            // 4. Enter key: auto-indent + expand brackets
+                            if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
                               e.preventDefault()
-                              const before = code.substring(0, start)
-                              const after = code.substring(end)
-                              const currentLine = before.split("\n").pop() || ""
-                              // Get leading whitespace of current line
+                              const before = value.slice(0, start)
+                              const after = value.slice(end)
+                              const lastNewLine = before.lastIndexOf("\n")
+                              const currentLine = before.slice(lastNewLine + 1)
+                              
                               const indentMatch = currentLine.match(/^(\s*)/)
                               let indent = indentMatch ? indentMatch[1] : ""
-                              // Add extra indent if line ends with { : ( ,
+                              
+                              const charBefore = value[start - 1]
+                              const charAfter = value[start]
+                              const isExpandable =
+                                (charBefore === "{" && charAfter === "}") ||
+                                (charBefore === "(" && charAfter === ")") ||
+                                (charBefore === "[" && charAfter === "]")
+
+                              if (isExpandable) {
+                                // Expand: add extra line with indent+4, and closing line with original indent
+                                const newValue = before + "\n" + indent + "    " + "\n" + indent + after
+                                handleCodeChange(newValue)
+                                const newPos = start + 1 + indent.length + 4
+                                requestAnimationFrame(() => {
+                                  target.selectionStart = target.selectionEnd = newPos
+                                })
+                                return
+                              }
+
+                              // Standard auto-indent
                               const trimmedLine = currentLine.trimEnd()
                               if (trimmedLine.endsWith("{") || trimmedLine.endsWith(":") || trimmedLine.endsWith("(") || trimmedLine.endsWith(",")) {
                                 indent += "    "
                               }
-                              const newCode = before + "\n" + indent + after
-                              handleCodeChange(newCode)
+                              
+                              const newValue = before + "\n" + indent + after
+                              handleCodeChange(newValue)
                               const newPos = start + 1 + indent.length
                               requestAnimationFrame(() => {
                                 target.selectionStart = target.selectionEnd = newPos
@@ -1075,16 +1135,29 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                               return
                             }
 
-                            // Backspace: delete 4 spaces if cursor is at indent boundary
+                            // 5. Backspace: delete both chars if cursor is between a pair OR delete 4 spaces for dedent
                             if (e.key === "Backspace" && start === end && start > 0) {
-                              const before = code.substring(0, start)
+                              const pairsBefore = ["{}", "()", "[]", '""', "''", "``"]
+                              const charsAround = value.slice(start - 1, start + 1)
+                              
+                              if (pairsBefore.includes(charsAround)) {
+                                e.preventDefault()
+                                const newValue = value.slice(0, start - 1) + value.slice(start + 1)
+                                handleCodeChange(newValue)
+                                requestAnimationFrame(() => {
+                                  target.selectionStart = target.selectionEnd = start - 1
+                                })
+                                return
+                              }
+
+                              // Check for 4-space dedent
+                              const before = value.substring(0, start)
                               const lineStart = before.lastIndexOf("\n") + 1
                               const linePrefix = before.substring(lineStart)
-                              // Only if the prefix is all spaces and length is multiple of 4
                               if (linePrefix.length > 0 && linePrefix.length % 4 === 0 && /^ +$/.test(linePrefix)) {
                                 e.preventDefault()
-                                const newCode = code.substring(0, start - 4) + code.substring(end)
-                                handleCodeChange(newCode)
+                                const newValue = value.substring(0, start - 4) + value.substring(end)
+                                handleCodeChange(newValue)
                                 requestAnimationFrame(() => {
                                   target.selectionStart = target.selectionEnd = start - 4
                                 })
