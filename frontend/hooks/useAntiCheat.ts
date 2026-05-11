@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Anti-Cheat Hook (REWRITTEN FOR ISOLATION)
@@ -25,6 +25,7 @@ interface UseAntiCheatProps {
 
 interface UseAntiCheatReturn {
   violationCount: number
+  showFullscreenWarning: boolean
   cleanup: () => void
 }
 
@@ -39,6 +40,8 @@ export function useAntiCheat({
   const isArmedRef = useRef(false)
   const lastViolationTimeRef = useRef(0)
   const cleanupFnsRef = useRef<Array<() => void>>([])
+  
+  const [showFullscreenWarning, setShowFullscreenWarning] = useState(false)
 
   // Stable refs for callbacks to avoid dependency chain complexity
   const onViolationRef = useRef(onViolation)
@@ -117,12 +120,9 @@ export function useAntiCheat({
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && isArmedRef.current) {
         addViolation("fullscreen_exit")
-        // RULE 3 & 4: Re-prompt fullscreen
-        setTimeout(() => {
-          if (!document.fullscreenElement && isArmedRef.current) {
-            document.documentElement.requestFullscreen().catch(() => {})
-          }
-        }, 500)
+        setShowFullscreenWarning(true)
+      } else if (document.fullscreenElement) {
+        setShowFullscreenWarning(false)
       }
     }
 
@@ -271,6 +271,7 @@ export function useAntiCheat({
 
   return {
     violationCount: violationCountRef.current,
+    showFullscreenWarning,
     cleanup,
   }
 }

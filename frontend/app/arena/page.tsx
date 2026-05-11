@@ -5,6 +5,7 @@ import { ArenaLobby } from "@/components/arena/arena-lobby"
 import { TestArena } from "@/components/arena/test-arena"
 import { useAntiCheat } from "@/hooks/useAntiCheat"
 import { API_URL } from "@/lib/api-config"
+import { AlertTriangle } from "lucide-react"
 
 const AUTOSAVE_KEY = "arena_autosave_code"
 const AUTOSAVE_LANG_KEY = "arena_autosave_lang"
@@ -39,7 +40,7 @@ export default function ArenaPage() {
     submitHandlerRef.current?.()
   }, [])
 
-  const { cleanup: antiCheatCleanup } = useAntiCheat({
+  const { cleanup: antiCheatCleanup, showFullscreenWarning } = useAntiCheat({
     onViolation: handleViolation,
     onAutoSubmit: handleAutoSubmit,
     maxViolations: 3,
@@ -112,6 +113,27 @@ export default function ArenaPage() {
         {violationToast && (
           <div className="fixed top-4 right-4 z-[10000] bg-red-900/90 border border-red-500 text-red-100 px-5 py-3 rounded-lg shadow-2xl animate-pulse text-sm font-bold">
             {violationToast}
+          </div>
+        )}
+
+        {showFullscreenWarning && (
+          <div className="fixed inset-0 z-[10001] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+            <div className="max-w-md w-full border border-panel-border bg-panel-bg p-8 shadow-2xl">
+              <AlertTriangle className="h-16 w-16 text-neon-pink mx-auto mb-6 animate-pulse-glow" />
+              <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">
+                Fullscreen <span className="text-neon-pink text-glow-pink">Required</span>
+              </h2>
+              <p className="text-sm text-muted-foreground mb-8">
+                Exiting fullscreen is a violation of the test policy. 
+                You must return to fullscreen mode to continue your session.
+              </p>
+              <button
+                onClick={() => document.documentElement.requestFullscreen().catch(() => {})}
+                className="w-full bg-neon-cyan/90 hover:bg-neon-cyan text-deep-bg py-4 font-mono text-xs font-bold tracking-[0.2em] transition-all"
+              >
+                RETURN TO FULLSCREEN
+              </button>
+            </div>
           </div>
         )}
 
