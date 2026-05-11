@@ -85,8 +85,121 @@ export function QuestionRenderer({ question, answer, onChange, isLocked, result 
             disabled={isLocked}
             value={answer || question.template || ""}
             onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (isLocked) return;
+              const target = e.currentTarget
+              const start = target.selectionStart
+              const end = target.selectionEnd
+              const value = target.value
+
+              const pairs: Record<string, string> = {
+                "{": "}",
+                "(": ")",
+                "[": "]",
+                '"': '"',
+                "'": "'",
+                "`": "`",
+              }
+
+              // 1. AUTO-CLOSE: insert pair and place cursor between them
+              if (pairs[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault()
+                const open = e.key
+                const close = pairs[open]
+                const before = value.slice(0, start)
+                const selected = value.slice(start, end)
+                const after = value.slice(end)
+
+                const newValue = before + open + selected + close + after
+                const newCursor = start + 1 + selected.length
+
+                onChange(newValue)
+                requestAnimationFrame(() => {
+                  target.selectionStart = target.selectionEnd = newCursor
+                })
+                return
+              }
+
+              // 2. SKIP OVER: if next char is closing bracket and user types it, skip
+              const closers = new Set([")", "]", "}", '"', "'", "`"])
+              if (
+                closers.has(e.key) &&
+                value[start] === e.key &&
+                start === end &&
+                !e.ctrlKey && !e.metaKey
+              ) {
+                e.preventDefault()
+                target.selectionStart = target.selectionEnd = start + 1
+                return
+              }
+
+              // 3. Tab key: insert 4 spaces
+              if (e.key === "Tab") {
+                e.preventDefault()
+                if (e.shiftKey) {
+                  // Shift+Tab: dedent
+                  const before = value.substring(0, start)
+                  const lineStart = before.lastIndexOf("\n") + 1
+                  const linePrefix = value.substring(lineStart, start)
+                  const leadingMatch = linePrefix.match(/^( {1,4})/)
+                  if (leadingMatch) {
+                    const removeCount = leadingMatch[1].length
+                    const newValue = value.substring(0, lineStart) + value.substring(lineStart + removeCount)
+                    onChange(newValue)
+                    const newPos = Math.max(lineStart, start - removeCount)
+                    requestAnimationFrame(() => {
+                      target.selectionStart = target.selectionEnd = newPos
+                    })
+                  }
+                } else {
+                  // Tab: insert 4 spaces
+                  const newValue = value.substring(0, start) + "    " + value.substring(end)
+                  onChange(newValue)
+                  requestAnimationFrame(() => {
+                    target.selectionStart = target.selectionEnd = start + 4
+                  })
+                }
+                return
+              }
+
+              // 4. Enter key: auto-indent
+              if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault()
+                const before = value.slice(0, start)
+                const after = value.slice(end)
+                const lastNewLine = before.lastIndexOf("\n")
+                const currentLine = before.slice(lastNewLine + 1)
+                const indentMatch = currentLine.match(/^\s*/)
+                const indent = indentMatch ? indentMatch[0] : ""
+
+                // Extra indent if opening a block
+                let extraIndent = ""
+                const charBefore = before.trim().slice(-1)
+                if (charBefore === "{" || charBefore === ":" || charBefore === "(") {
+                   extraIndent = "    "
+                }
+
+                // If pressing enter between { and }, expand the block
+                if (charBefore === "{" && after.trim().startsWith("}")) {
+                  const newValue = before + "\n" + indent + extraIndent + "\n" + indent + after
+                  onChange(newValue)
+                  requestAnimationFrame(() => {
+                    target.selectionStart = target.selectionEnd = start + 1 + indent.length + extraIndent.length
+                  })
+                  return
+                }
+
+                const newValue = before + "\n" + indent + extraIndent + after
+                onChange(newValue)
+                requestAnimationFrame(() => {
+                  target.selectionStart = target.selectionEnd = start + 1 + indent.length + extraIndent.length
+                })
+                return
+              }
+            }}
             placeholder="// Enter your code solution here..."
             className={`relative w-full h-[400px] bg-deep-bg/60 border ${result ? (result.isCorrect ? 'border-neon-green/40' : 'border-neon-pink/40') : 'border-panel-border'} p-6 font-mono text-xs leading-relaxed text-foreground focus:border-neon-cyan/50 focus:outline-none resize-none transition-colors`}
+            style={{ tabSize: 4, MozTabSize: 4 }}
             spellCheck={false}
           />
           {result && (
