@@ -1,6 +1,7 @@
 package judge
 
 import (
+	"log"
 	"strings"
 	"sync"
 )
@@ -53,6 +54,8 @@ func newDefaultExecutor() Executor {
 
 // Execute runs code through the executor with concurrency control.
 func (s *ExecutionService) Execute(code, language, input string, timeLimitMs int) (ExecutionResult, error) {
+	log.Printf("[SERVICE] running language: %s", language)
+	
 	// Acquire semaphore slot
 	s.semaphore <- struct{}{}
 	defer func() { <-s.semaphore }()

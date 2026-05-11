@@ -339,16 +339,19 @@ func SaveDraft(c *gin.Context) {
 // Does NOT save to submissions table.
 // ──────────────────────────────────────────────
 func RunCode(c *gin.Context) {
-	var req struct {
+	type SubmitRequest struct {
 		AttemptID  string `json:"attemptId" binding:"required"`
 		QuestionID string `json:"questionId" binding:"required"`
 		Code       string `json:"code" binding:"required"`
 		Language   string `json:"language" binding:"required"`
+		SessionID  string `json:"sessionId"`
 	}
+	var req SubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "attemptId, questionId, code, and language are required"})
 		return
 	}
+	log.Printf("[HANDLER] received language: %s", req.Language)
 
 	// Time guard — reject if test window has closed
 	var runAttempt models.TestAttempt
@@ -447,16 +450,19 @@ func SubmitCode(c *gin.Context) {
 		return
 	}
 
-	var req struct {
+	type SubmitRequest struct {
 		AttemptID  string `json:"attemptId" binding:"required"`
 		QuestionID string `json:"questionId" binding:"required"`
 		Code       string `json:"code" binding:"required"`
 		Language   string `json:"language" binding:"required"`
+		SessionID  string `json:"sessionId"`
 	}
+	var req SubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "attemptId, questionId, code, and language are required"})
 		return
 	}
+	log.Printf("[HANDLER] received language: %s", req.Language)
 	log.Printf("[SUBMIT-CODE] userID=%v attemptId=%s questionId=%s lang=%s", userID, req.AttemptID, req.QuestionID, req.Language)
 
 	// Verify attempt belongs to user

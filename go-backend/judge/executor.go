@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -89,6 +90,8 @@ func compile(args []string, timeoutSec int) (string, error) {
 // Each call uses its own isolated temp directory for concurrency safety.
 // The execution timeout only covers the run phase, NOT compilation.
 func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (ExecutionResult, error) {
+	log.Printf("[EXECUTOR] executing language: %s", language)
+	
 	if timeLimitMs <= 0 {
 		timeLimitMs = 2000
 	}
@@ -216,6 +219,8 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 
 	stdout := normalizeOutput(stdoutBuf.String())
 	stderr := stderrBuf.String()
+	
+	log.Printf("[EXECUTOR] stderr: %s", stderr)
 
 	// Check for timeout FIRST
 	if ctx.Err() == context.DeadlineExceeded {

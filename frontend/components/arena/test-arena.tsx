@@ -390,7 +390,7 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
 
   // Code editing state
   const [code, setCode] = useState("")
-  const [language, setLanguage] = useState("python")
+  const [language, setLanguage] = useState("python3")
   const [langTemplates, setLangTemplates] = useState<Record<string, string>>({})
   const [runResults, setRunResults] = useState<RunCaseResult[] | null>(null)
   const [submitResult, setSubmitResult] = useState<{ verdict: string; passedCount: number; totalCount: number } | null>(null)
@@ -551,10 +551,10 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
       const existingSub = submissions.find((s) => s.questionId === q.id && s.type === "coding")
       if (existingSub?.code) {
         setCode(existingSub.code)
-        setLanguage(existingSub.language || "python")
+        setLanguage(existingSub.language || "python3")
       } else {
-        setLanguage("python")
-        setCode(langTemplates["python"] || "")
+        setLanguage("python3")
+        setCode(langTemplates["python3"] || "")
       }
     }
   }, [currentQ, questions]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -657,6 +657,7 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
     setSubmitResult(null)
     setRunResults(null)
     setCompileError(null)
+    console.log("[SUBMIT] language =", language)
     try {
       const res = await fetch(`${API_URL}/api/arena/submissions/code`, {
         method: "POST",
