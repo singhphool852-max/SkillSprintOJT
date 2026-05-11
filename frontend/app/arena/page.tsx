@@ -102,7 +102,7 @@ export default function ArenaPage() {
   // When a test is active: render in fixed fullscreen overlay
   if (isTestActive) {
     return (
-      <main className="fixed inset-0 z-[9999] bg-deep-bg overflow-auto">
+      <main className="fixed inset-0 z-[9999] bg-deep-bg overflow-hidden flex flex-col">
         {/* Violation toast — always visible, top-right */}
         {violationToast && (
           <div className="fixed top-4 right-4 z-[10000] bg-red-900/90 border border-red-500 text-red-100 px-5 py-3 rounded-lg shadow-2xl animate-pulse text-sm font-bold">

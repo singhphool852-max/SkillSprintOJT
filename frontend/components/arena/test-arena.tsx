@@ -766,7 +766,7 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
   const isDanger = remainingSeconds <= 60
 
   return (
-    <div className="relative min-h-[60vh] flex flex-col">
+    <div className="relative h-full flex flex-col flex-1 min-h-0">
       <div className="absolute inset-0 grid-bg opacity-30" />
 
       {/* Anti-cheat warning overlay is managed by the parent arena page */}
@@ -826,8 +826,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
       </div>
 
       {/* ── Main content ── */}
-      <div className="relative z-10 flex-1 mx-auto max-w-6xl w-full px-4 py-6">
-        <div className="flex gap-6">
+      <div className="relative z-10 flex-1 mx-auto w-full px-4 py-6 max-w-none flex flex-col min-h-0">
+        <div className="flex gap-6 flex-1 min-h-0">
 
           {/* ── Question navigation sidebar ── */}
           <div className="flex flex-col gap-2 shrink-0">
@@ -861,34 +861,32 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
           </div>
 
           {/* ── Question area ── */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
             {currentQuestion && (
               <>
-                {/* Question header */}
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    {currentQuestion.type === "mcq" ? (
-                      <Radio className="h-4 w-4 text-neon-cyan" />
-                    ) : (
-                      <Code2 className="h-4 w-4 text-neon-pink" />
-                    )}
-                    <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-                      {currentQuestion.type === "mcq" ? "MULTIPLE CHOICE" : "CODING CHALLENGE"}
-                    </span>
-                  </div>
-                  <span className="font-mono text-[10px] tracking-wider text-neon-yellow">
-                    {currentQuestion.points} PTS
-                  </span>
-                </div>
+                {/* ── MCQ VIEW ── */}
+                {currentQuestion.type === "mcq" && (
+                  <div className="flex flex-col overflow-y-auto pr-4 max-w-4xl mx-auto w-full">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <Radio className="h-4 w-4 text-neon-cyan" />
+                        <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                          MULTIPLE CHOICE
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] tracking-wider text-neon-yellow">
+                        {currentQuestion.points} PTS
+                      </span>
+                    </div>
 
-                <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
-                  {currentQuestion.title}
-                </h3>
-                {currentQuestion.description && (
-                  <p className="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
-                    {currentQuestion.description}
-                  </p>
-                )}
+                    <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
+                      {currentQuestion.title}
+                    </h3>
+                    {currentQuestion.description && (
+                      <p className="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
+                        {currentQuestion.description}
+                      </p>
+                    )}
 
                 {/* ── MCQ ── */}
                 {currentQuestion.type === "mcq" && currentQuestion.mcqOptions && (
@@ -913,11 +911,35 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                   </div>
                 )}
 
-                {/* ── Coding ── */}
+                  </div>
+                )}
+
+                {/* ── CODING VIEW ── */}
                 {currentQuestion.type === "coding" && (
-                  <div className="flex flex-col gap-0 h-full">
-                    {/* ── Problem Description Panel ── */}
-                    <div className="border border-panel-border bg-panel-bg/40 p-4 mb-3">
+                  <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0 w-full">
+                    
+                    {/* ── PANEL 1: Problem Description (Left 35%) ── */}
+                    <div className="lg:w-[35%] flex flex-col min-h-0 border border-panel-border bg-panel-bg/40 p-4 overflow-y-auto">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center gap-2">
+                          <Code2 className="h-4 w-4 text-neon-pink" />
+                          <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                            CODING CHALLENGE
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] tracking-wider text-neon-yellow">
+                          {currentQuestion.points} PTS
+                        </span>
+                      </div>
+
+                      <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
+                        {currentQuestion.title}
+                      </h3>
+                      {currentQuestion.description && (
+                        <p className="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
+                          {currentQuestion.description}
+                        </p>
+                      )}
                       {/* Constraints */}
                       {currentQuestion.codingDetail?.constraints && (
                         <div className="mb-3">
@@ -958,10 +980,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                       )}
                     </div>
 
-                    {/* ── Code Editor + Terminal Split ── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 flex-1 min-h-0">
-                      {/* ── Left: Editor ── */}
-                      <div className="flex flex-col border border-panel-border bg-deep-bg/60">
+                    {/* ── PANEL 2: Code Editor (Middle 40%) ── */}
+                    <div className="lg:w-[40%] flex flex-col min-h-0 border border-panel-border bg-deep-bg/60">
                         {/* Editor toolbar */}
                         <div className="flex items-center justify-between px-3 py-2 border-b border-panel-border bg-panel-bg/60">
                           <div className="flex items-center gap-3">
@@ -1097,8 +1117,8 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                         </div>
                       </div>
 
-                      {/* ── Right: Terminal / Output Panel ── */}
-                      <div className="flex flex-col border border-panel-border border-l-0 lg:border-l-0 bg-deep-bg/60">
+                    {/* ── PANEL 3: Terminal / Output (Right 25%) ── */}
+                    <div className="lg:w-[25%] flex flex-col min-h-0 border border-panel-border bg-deep-bg/60">
                         {/* Terminal tabs */}
                         <div className="flex items-center border-b border-panel-border bg-panel-bg/60">
                           <button
@@ -1232,7 +1252,6 @@ function ActiveTest({ attemptId, testId, onExit, editorRef, submitHandlerRef }: 
                           )}
                         </div>
                       </div>
-                    </div>
                   </div>
                 )}
               </>
