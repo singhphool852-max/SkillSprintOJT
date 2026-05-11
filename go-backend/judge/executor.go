@@ -211,6 +211,7 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 
 	stdout := normalizeOutput(stdoutBuf.String())
 	stderr := stderrBuf.String()
+	log.Printf("[EXECUTOR] lang=%s raw_stdout=%q", language, stdoutBuf.String())
 	
 	log.Printf("[EXECUTOR] lang=%s duration=%dms stderr=%q", language, duration, stderr)
 

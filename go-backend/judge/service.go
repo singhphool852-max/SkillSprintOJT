@@ -92,7 +92,7 @@ func (s *ExecutionService) RunTestCases(code, language string, inputs []string, 
 		}
 
 		results[i] = tcr
-		log.Printf("[SERVICE] testcase %d lang=%s pass=%v actual=%q expected=%q",
+		log.Printf("[JUDGE] case %d lang=%s pass=%v\nACTUAL:   %q\nEXPECTED: %q",
 			i, language, tcr.Pass, Normalize(tcr.Actual), Normalize(tcr.Expected))
 	}
 	return results
