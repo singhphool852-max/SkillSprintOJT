@@ -77,6 +77,7 @@ const topTopics = [
   },
 ]
 
+const trainingModes = [
   {
     title: "ADAPTIVE MODE",
     description: "AI-powered session that targets your weak areas with mixed difficulty and similar variations.",
