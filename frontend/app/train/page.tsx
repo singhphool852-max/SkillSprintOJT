@@ -77,14 +77,21 @@ const topTopics = [
   },
 ]
 
-const trainingModes = [
   {
-    title: "PRACTICE MODE",
-    description: "Lower pressure environment focused on learning and accuracy. Helpful hints enabled.",
+    title: "ADAPTIVE MODE",
+    description: "AI-powered session that targets your weak areas with mixed difficulty and similar variations.",
     icon: Brain,
-    duration: "Unlimited",
-    difficulty: "Beginner" as const,
+    duration: "Flexible",
+    difficulty: "Adaptive" as const,
     color: "cyan" as const
+  },
+  {
+    title: "RECOVERY MODE",
+    description: "Focus strictly on questions you failed previously. Re-master your technical blind spots.",
+    icon: Zap,
+    duration: "Flexible",
+    difficulty: "Variable" as const,
+    color: "pink" as const
   },
   {
     title: "SPEED MODE",
@@ -101,15 +108,6 @@ const trainingModes = [
     duration: "Flexible",
     difficulty: "Intermediate" as const,
     color: "cyan" as const
-  },
-  {
-    title: "MOCK INTERVIEW",
-    description: "End-to-end simulated technical interview. Mixed domains, live pressure, and AI review.",
-    icon: UserCheck,
-    duration: "45-min",
-    difficulty: "Advanced" as const,
-    color: "pink" as const,
-    isPremium: true
   },
 ]
 
@@ -129,6 +127,36 @@ export default function TrainPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiDebugInfo, setAiDebugInfo] = useState<{ isRealAI: boolean; provider: string } | null>(null)
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+
+  // Handle incoming mode from dashboard
+  useEffect(() => {
+    const mode = searchParams?.get('mode')
+    if (mode === 'adaptive' || mode === 'mistakes') {
+      // Auto-start an adaptive session
+      handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : "adaptive")
+    }
+  }, [searchParams])
+
+  const handleAdaptiveStart = async (mode: "adaptive" | "mistakes") => {
+    setAiLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/api/training/adaptive/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+        credentials: "include"
+      })
+      if (res.ok) {
+        const data = await res.json()
+        router.push(`/train/play/${data.sessionId}?mode=${mode.toUpperCase()}`)
+      }
+    } catch (err) {
+      console.error("Failed to start adaptive session:", err)
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   const handleGenerateAI = async () => {
     if (!aiTopic.trim()) {
@@ -231,6 +259,16 @@ export default function TrainPage() {
 
     if (mode === "TARGET MODE") {
       setShowSetup(true)
+      return
+    }
+
+    if (mode === "ADAPTIVE MODE") {
+      handleAdaptiveStart("adaptive")
+      return
+    }
+
+    if (mode === "RECOVERY MODE") {
+      handleAdaptiveStart("mistakes")
       return
     }
 
