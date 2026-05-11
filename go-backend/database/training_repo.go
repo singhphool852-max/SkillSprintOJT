@@ -40,7 +40,7 @@ func GetQuestions(topic, difficulty string, count int) ([]models.TrainingQuestio
 	if difficulty != "" {
 		query = query.Where("difficulty = ?", difficulty)
 	}
-	query = query.Order("RANDOM()").Limit(count)
+	query = query.Order("RAND()").Limit(count)
 
 	if err := query.Find(&questions).Error; err != nil {
 		log.Printf("[TrainingRepo] ERROR fetching questions: topic=%s difficulty=%s count=%d err=%v", topic, difficulty, count, err)

@@ -39,8 +39,8 @@ func GetService() *ExecutionService {
 	serviceOnce.Do(func() {
 		service = &ExecutionService{
 			executor:      newDefaultExecutor(),
-			maxConcurrent: 10, // max parallel executions
-			semaphore:     make(chan struct{}, 10),
+			maxConcurrent: 100, // max parallel executions (supports 100+ concurrent users)
+			semaphore:     make(chan struct{}, 100),
 		}
 	})
 	return service

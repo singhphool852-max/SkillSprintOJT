@@ -5,20 +5,18 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
+	"os"
 )
 
 // ──────────────────────────────────────────────
 // Executor — pluggable code execution interface.
 //
 // Implementations:
-//   - LocalExecutor:  runs on same machine (dev/small setups)
-//   - DockerExecutor: runs inside ephemeral containers (future)
+//   - LocalExecutor:  runs in Docker containers (production)
 //   - CloudExecutor:  sends to remote worker fleet (future)
 //
 // To swap: change NewDefaultExecutor() in service.go.
@@ -49,7 +47,7 @@ type LanguageInfo struct {
 	Template string `json:"template"`
 }
 
-// LocalExecutor runs code as a local subprocess with timeout enforcement.
+// LocalExecutor runs code in isolated Docker containers with resource limits.
 type LocalExecutor struct{}
 
 func NewLocalExecutor() *LocalExecutor {
@@ -58,39 +56,22 @@ func NewLocalExecutor() *LocalExecutor {
 
 func (e *LocalExecutor) SupportedLanguages() []LanguageInfo {
 	return []LanguageInfo{
-		{ID: "python", Name: "Python 3", Version: "3.x", Template: "import sys\n\ndef solve():\n    # Read input\n    line = input()\n    # Your solution here\n    print(line)\n\nsolve()\n"},
+		{ID: "python", Name: "Python 3", Version: "3.11", Template: "import sys\n\ndef solve():\n    # Read input\n    line = input()\n    # Your solution here\n    print(line)\n\nsolve()\n"},
 		{ID: "cpp", Name: "C++", Version: "C++17", Template: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Read input\n    string s;\n    getline(cin, s);\n    // Your solution here\n    cout << s << endl;\n    return 0;\n}\n"},
-		{ID: "java", Name: "Java", Version: "17+", Template: "import java.util.Scanner;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Read input\n        String s = sc.nextLine();\n        // Your solution here\n        System.out.println(s);\n    }\n}\n"},
-		{ID: "javascript", Name: "JavaScript", Version: "Node.js", Template: "const readline = require('readline');\nconst rl = readline.createInterface({ input: process.stdin });\nconst lines = [];\nrl.on('line', (line) => lines.push(line));\nrl.on('close', () => {\n    // Your solution here\n    console.log(lines[0]);\n});\n"},
-		{ID: "go", Name: "Go", Version: "1.21+", Template: "package main\n\nimport (\n\t\"bufio\"\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tscanner := bufio.NewScanner(os.Stdin)\n\tscanner.Scan()\n\t// Your solution here\n\tfmt.Println(scanner.Text())\n}\n"},
+		{ID: "java", Name: "Java", Version: "21", Template: "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Read input\n        String s = sc.nextLine();\n        // Your solution here\n        System.out.println(s);\n    }\n}\n"},
+		{ID: "javascript", Name: "JavaScript", Version: "Node.js 20", Template: "const readline = require('readline');\nconst rl = readline.createInterface({ input: process.stdin });\nconst lines = [];\nrl.on('line', (line) => lines.push(line));\nrl.on('close', () => {\n    // Your solution here\n    console.log(lines[0]);\n});\n"},
+		{ID: "go", Name: "Go", Version: "1.21", Template: "package main\n\nimport (\n\t\"bufio\"\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tscanner := bufio.NewScanner(os.Stdin)\n\tscanner.Scan()\n\t// Your solution here\n\tfmt.Println(scanner.Text())\n}\n"},
 	}
 }
 
-// normalizeInput strips \r from input so programs always see clean \n line endings.
-func normalizeInput(s string) string {
-	return strings.ReplaceAll(s, "\r\n", "\n")
-}
-
-// normalizeOutput strips \r from output so comparison is consistent.
-func normalizeOutput(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "")
-	return s
-}
-
-// compile runs a compilation command with a generous timeout.
-// Returns (compileOutput, error). If error is non-nil, compilation failed.
-func compile(args []string, timeoutSec int) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
-// Run executes the given code with the given input and time limit.
-// Each call uses its own isolated temp directory for concurrency safety.
-// The execution timeout only covers the run phase, NOT compilation.
+// Run executes code in an isolated Docker container with security constraints.
+// Each execution:
+// - Creates isolated temp directory
+// - Writes code to file
+// - Runs in Docker with: no network, memory limit, CPU limit, read-only code mount
+// - 10 second timeout
+// - Captures stdout for comparison
+// - Cleans up temp directory
 func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (ExecutionResult, error) {
 	log.Printf("[EXECUTOR] executing language: %s", language)
 	
@@ -98,87 +79,43 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		timeLimitMs = 2000
 	}
 
-	// Each execution gets its own temp dir — safe for concurrent goroutines
+	// Create isolated temp directory for this execution
 	tmpDir, err := os.MkdirTemp("", "judge-*")
 	if err != nil {
 		return ExecutionResult{Error: "failed to create temp dir", ErrorType: "internal_error"}, err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Normalize input: strip \r so programs always see clean \n
-	input = normalizeInput(input)
+	var filename, image string
+	var runCmd []string
 
-	// Determine what to run based on language.
-	// For compiled languages: compile first (outside the execution timeout),
-	// then run the binary within the timeout.
-	var runArgs []string // command + args for the run phase
-	var runDir string    // working directory for the run phase
-
-	switch strings.ToLower(language) {
-	case "python", "python3", "py":
-		srcPath := filepath.Join(tmpDir, "solution.py")
-		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
-			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
-		}
-		runArgs = []string{"python3", srcPath}
-
-	case "cpp", "c++":
-		srcPath := filepath.Join(tmpDir, "solution.cpp")
-		binPath := filepath.Join(tmpDir, "solution")
-		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
-			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
-		}
-		compOut, compErr := compile([]string{"g++", "-O2", "-o", binPath, srcPath, "-std=c++17"}, 15)
-		if compErr != nil {
-			return ExecutionResult{
-				Output:     compOut,
-				CompileOut: compOut,
-				ExitCode:   1,
-				Error:      "compilation_error",
-				ErrorType:  "compilation_error",
-			}, nil
-		}
-		runArgs = []string{binPath}
-
-	case "java":
-		// Detect class name from code
-		className := "Solution"
-		re := regexp.MustCompile(`public\s+class\s+(\w+)`)
-		if m := re.FindStringSubmatch(code); len(m) > 1 {
-			className = m[1]
-		}
-		srcPath := filepath.Join(tmpDir, className+".java")
-		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
-			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
-		}
-		compOut, compErr := compile([]string{"javac", "-d", tmpDir, srcPath}, 15)
-		if compErr != nil {
-			return ExecutionResult{
-				Output:     compOut,
-				CompileOut: compOut,
-				ExitCode:   1,
-				Error:      "compilation_error",
-				ErrorType:  "compilation_error",
-			}, nil
-		}
-		runArgs = []string{"java", "-cp", tmpDir, className}
-
-	case "javascript", "js", "node":
-		srcPath := filepath.Join(tmpDir, "solution.js")
-		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
-			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
-		}
-		runArgs = []string{"node", srcPath}
-
+	// Language to Docker image mapping
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "python", "python3":
+		filename = "solution.py"
+		image = "python:3.11-alpine"
+		runCmd = []string{"python3", "/code/solution.py"}
+		
 	case "go", "golang":
-		srcPath := filepath.Join(tmpDir, "main.go")
-		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
-			return ExecutionResult{Error: "failed to write source", ErrorType: "internal_error"}, err
-		}
-		runArgs = []string{"go", "run", srcPath}
-		runDir = tmpDir
-		timeLimitMs += 10000
-
+		filename = "main.go"
+		image = "golang:1.21-alpine"
+		runCmd = []string{"go", "run", "/code/main.go"}
+		
+	case "cpp", "c++", "c":
+		filename = "solution.cpp"
+		image = "gcc:13"
+		runCmd = []string{"sh", "-c", "g++ -O2 -o /tmp/solution /code/solution.cpp && /tmp/solution"}
+		
+	case "java":
+		filename = "Main.java"
+		image = "openjdk:21-slim"
+		runCmd = []string{"sh", "-c", "javac /code/Main.java && java -cp /code Main"}
+		
+	case "javascript", "js", "node":
+		filename = "solution.js"
+		image = "node:20-alpine"
+		runCmd = []string{"node", "/code/solution.js"}
+		
 	default:
 		return ExecutionResult{
 			Error:     fmt.Sprintf("unsupported language: %s", language),
@@ -186,75 +123,65 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		}, fmt.Errorf("unsupported language: %s", language)
 	}
 
-	// ── Run phase: create a FRESH timeout context that starts NOW ──
-	// This ensures compilation time is NOT counted against the user's time limit.
-	timeout := time.Duration(timeLimitMs) * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// Write code to temp directory
+	filePath := filepath.Join(tmpDir, filename)
+	if err := os.WriteFile(filePath, []byte(code), 0644); err != nil {
+		return ExecutionResult{Error: "failed to write code file", ErrorType: "internal_error"}, err
+	}
+
+	// Create timeout context (10 seconds max)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, runArgs[0], runArgs[1:]...)
-	if runDir != "" {
-		cmd.Dir = runDir
+	// Build docker run command with security constraints
+	args := []string{
+		"run", "--rm",
+		"--network", "none",           // No network access
+		"--memory", "128m",            // 128MB RAM limit
+		"--memory-swap", "128m",       // No swap
+		"--cpus", "0.5",               // 50% CPU limit
+		"--pids-limit", "50",          // Max 50 processes
+		"-v", tmpDir + ":/code:ro",    // Mount code as read-only
+		"-i",                          // Interactive (for stdin)
+		image,
 	}
+	args = append(args, runCmd...)
 
-	// Pipe test input to stdin
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdin = strings.NewReader(input)
-
-	// Capture stdout and stderr SEPARATELY — only stdout is used for comparison
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+	
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	startTime := time.Now()
-	runErr := cmd.Run()
-	duration := time.Since(startTime).Milliseconds()
-
-	stdout := normalizeOutput(stdoutBuf.String())
-	stderr := stderrBuf.String()
-	log.Printf("[EXECUTOR] lang=%s raw_stdout=%q", language, stdoutBuf.String())
-	
-	log.Printf("[EXECUTOR] lang=%s duration=%dms stderr=%q", language, duration, stderr)
-
-	// Check for timeout FIRST
-	if ctx.Err() == context.DeadlineExceeded {
-		return ExecutionResult{
-			Output:     stdout,
-			CompileOut: stderr,
-			ExitCode:   -1,
-			TimedOut:   true,
-			Error:      "time_limit_exceeded",
-			ErrorType:  "time_limit_exceeded",
-			DurationMs: duration,
-		}, nil
-	}
-
-	// Check for runtime error
-	if runErr != nil {
-		exitCode := 0
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
+	if err := cmd.Run(); err != nil {
+		duration := time.Since(startTime).Milliseconds()
+		
+		// Check if timeout occurred
+		if ctx.Err() == context.DeadlineExceeded {
+			return ExecutionResult{
+				Output:     "TIME LIMIT EXCEEDED",
+				TimedOut:   true,
+				Error:      "time_limit_exceeded",
+				ErrorType:  "time_limit_exceeded",
+				DurationMs: 10000,
+			}, nil
 		}
-		// Include stderr in output for runtime errors so user sees the error message
-		errOutput := stdout
-		if stderr != "" {
-			if errOutput != "" {
-				errOutput += "\n"
-			}
-			errOutput += stderr
-		}
+		
+		// Runtime error
 		return ExecutionResult{
-			Output:     errOutput,
-			CompileOut: stderr,
-			ExitCode:   exitCode,
+			Output:     strings.TrimSpace(stderr.String()),
 			Error:      "runtime_error",
 			ErrorType:  "runtime_error",
 			DurationMs: duration,
-		}, nil
+		}, fmt.Errorf("runtime error: %s", strings.TrimSpace(stderr.String()))
 	}
+	
+	duration := time.Since(startTime).Milliseconds()
 
-	// Success — return only stdout (stderr is NOT mixed into comparison output)
 	return ExecutionResult{
-		Output:     stdout,
+		Output:     strings.TrimSpace(stdout.String()),
 		ExitCode:   0,
 		DurationMs: duration,
 	}, nil
