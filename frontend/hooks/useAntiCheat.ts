@@ -2,14 +2,9 @@
 
 import { useEffect, useRef, useCallback } from "react"
 
-// ──────────────────────────────────────────────
-// Anti-Cheat Hook
-//
-// Forces fullscreen, blocks shortcuts/clipboard/right-click,
-// detects tab switches, blur, and fullscreen exits.
-// Uses useRef for violation count to avoid unnecessary re-renders.
-// Calls onAutoSubmit and removes ALL listeners after maxViolations.
-// ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Anti-Cheat Hook (REWRITTEN FOR ISOLATION)
+// ─────────────────────────────────────────────────────────────────────────────
 
 type ViolationType =
   | "fullscreen_exit"
@@ -39,128 +34,145 @@ export function useAntiCheat({
   maxViolations = 3,
   enabled = true,
 }: UseAntiCheatProps): UseAntiCheatReturn {
+  // RULE 1 & 6: Use useRef for all mutable state inside hook, NO module-level variables
   const violationCountRef = useRef(0)
-  const armedRef = useRef(false)
+  const isArmedRef = useRef(false)
   const lastViolationTimeRef = useRef(0)
-  const cleanupRef = useRef<(() => void) | null>(null)
-  // Stable callback refs to avoid stale closures
+  const cleanupFnsRef = useRef<Array<() => void>>([])
+
+  // Stable refs for callbacks to avoid dependency chain complexity
   const onViolationRef = useRef(onViolation)
   const onAutoSubmitRef = useRef(onAutoSubmit)
-
   onViolationRef.current = onViolation
   onAutoSubmitRef.current = onAutoSubmit
 
-  const recordViolation = useCallback(
-    (type: ViolationType) => {
-      if (!armedRef.current) return
-      // Debounce: ignore violations within 1.5s of each other
-      const now = Date.now()
-      if (now - lastViolationTimeRef.current < 1500) return
-      lastViolationTimeRef.current = now
+  // ── VIOLATION HANDLER ──
+  const addViolation = useCallback((type: ViolationType) => {
+    if (!isArmedRef.current) return
 
-      violationCountRef.current += 1
-      const count = violationCountRef.current
-      onViolationRef.current(type, count)
+    // Debounce: ignore violations within 1.5s
+    const now = Date.now()
+    if (now - lastViolationTimeRef.current < 1500) return
+    lastViolationTimeRef.current = now
 
-      if (count >= maxViolations) {
-        // Auto-submit after brief delay so user sees the final warning
-        setTimeout(() => {
-          onAutoSubmitRef.current()
-          cleanupRef.current?.()
-        }, 1200)
-      }
-    },
-    [maxViolations]
-  )
+    violationCountRef.current += 1
+    const count = violationCountRef.current
+    onViolationRef.current(type, count)
 
+    if (count >= maxViolations) {
+      // Auto-submit after brief delay
+      setTimeout(() => {
+        onAutoSubmitRef.current()
+        // Final cleanup
+        cleanup()
+      }, 1000)
+    }
+  }, [maxViolations])
+
+  // RULE 7: Cleanup function removes exactly the listeners this instance added
   const cleanup = useCallback(() => {
-    armedRef.current = false
-    cleanupRef.current?.()
+    isArmedRef.current = false
+    cleanupFnsRef.current.forEach(fn => fn())
+    cleanupFnsRef.current = []
+    
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {})
     }
   }, [])
 
+  // RULE 8: Initial fullscreen request per component mount
   useEffect(() => {
-    if (!enabled) {
-      armedRef.current = false
-      return
-    }
+    if (!enabled) return
 
-    // Request fullscreen
-    const el = document.documentElement
-    el.requestFullscreen?.()
-      .then(() => {
-        // Arm after grace period to avoid false trigger from the fullscreenchange event itself
+    const requestFS = async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen()
+        }
+        // Grace period before arming to avoid false triggers
         setTimeout(() => {
-          armedRef.current = true
+          isArmedRef.current = true
         }, 1500)
-      })
-      .catch(() => {
-        // Browser denied (no user gesture context). Arm anyway so monitoring works.
+      } catch (err) {
+        console.warn("[AntiCheat] Fullscreen request failed:", err)
+        // Arm anyway so focus monitoring works
         setTimeout(() => {
-          armedRef.current = true
+          isArmedRef.current = true
         }, 2000)
-      })
+      }
+    }
 
-    // ── Fullscreen exit ──
+    requestFS()
+
+    return () => {
+      // If we are unmounting, we should ideally exit fullscreen if we were the one who requested it
+      // but in Arena, we might be switching views. The cleanup() call from parent handles this.
+    }
+  }, [enabled])
+
+  // RULE 4: Fullscreen change handler isolation and re-prompt
+  useEffect(() => {
+    if (!enabled) return
+
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && armedRef.current) {
-        recordViolation("fullscreen_exit")
-        // Attempt to re-enter fullscreen
+      if (!document.fullscreenElement && isArmedRef.current) {
+        addViolation("fullscreen_exit")
+        // RULE 3 & 4: Re-prompt fullscreen
         setTimeout(() => {
-          document.documentElement.requestFullscreen?.().catch(() => {})
-        }, 400)
+          if (!document.fullscreenElement && isArmedRef.current) {
+            document.documentElement.requestFullscreen().catch(() => {})
+          }
+        }, 500)
       }
     }
 
-    // ── Tab switch ──
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    const removeListener = () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
+    cleanupFnsRef.current.push(removeListener)
+
+    return removeListener
+  }, [enabled, addViolation])
+
+  // RULE 5: Visibility and Blur isolation
+  useEffect(() => {
+    if (!enabled) return
+
     const handleVisibilityChange = () => {
-      if (document.hidden && armedRef.current) {
-        recordViolation("tab_switch")
+      if (document.hidden && isArmedRef.current) {
+        addViolation("tab_switch")
       }
     }
 
-    // ── Window blur (Alt+Tab) ──
     const handleBlur = () => {
-      if (armedRef.current) {
-        recordViolation("window_blur")
+      if (isArmedRef.current) {
+        addViolation("window_blur")
       }
     }
 
-    // ── Clipboard blocking ──
-    const handleCopy = (e: Event) => {
-      if (!armedRef.current) return
-      e.preventDefault()
-      recordViolation("copy_blocked")
-    }
-    const handlePaste = (e: Event) => {
-      if (!armedRef.current) return
-      e.preventDefault()
-      recordViolation("paste_blocked")
-    }
-    const handleCut = (e: Event) => {
-      if (!armedRef.current) return
-      e.preventDefault()
-      recordViolation("cut_blocked")
-    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("blur", handleBlur)
 
-    // ── Right-click ──
-    const handleContextMenu = (e: Event) => {
-      if (!armedRef.current) return
-      e.preventDefault()
-      recordViolation("contextmenu_blocked")
+    const removeListeners = () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("blur", handleBlur)
     }
+    cleanupFnsRef.current.push(removeListeners)
 
-    // ── Keyboard shortcuts ──
+    return removeListeners
+  }, [enabled, addViolation])
+
+  // ── Keyboard & Context Menu isolation ──
+  useEffect(() => {
+    if (!enabled) return
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!armedRef.current) return
+      if (!isArmedRef.current) return
       const ctrl = e.ctrlKey || e.metaKey
 
       // F12
       if (e.key === "F12") {
         e.preventDefault()
-        recordViolation("keyboard_shortcut")
+        addViolation("keyboard_shortcut")
         return
       }
 
@@ -168,68 +180,91 @@ export function useAntiCheat({
         // Ctrl+Shift+I / Ctrl+Shift+J (DevTools)
         if (e.shiftKey && /^[ij]$/i.test(e.key)) {
           e.preventDefault()
-          recordViolation("keyboard_shortcut")
+          addViolation("keyboard_shortcut")
           return
         }
-        // Ctrl+C, Ctrl+V, Ctrl+X — already caught by clipboard events, but also block here
+        // Ctrl+C, Ctrl+V, Ctrl+X
         if (/^[cvx]$/i.test(e.key)) {
           e.preventDefault()
-          // clipboard event handlers will log the violation
+          // violation logged by clipboard events
           return
         }
-        // Ctrl+U (view source), Ctrl+T (new tab), Ctrl+L (address bar),
-        // Ctrl+R (reload), Ctrl+N (new window), Ctrl+W (close tab)
+        // Ctrl+U, Ctrl+T, Ctrl+L, Ctrl+R, Ctrl+N, Ctrl+W
         if (/^[utlrnw]$/i.test(e.key)) {
           e.preventDefault()
-          recordViolation("keyboard_shortcut")
+          addViolation("keyboard_shortcut")
           return
         }
         // Ctrl+Tab
         if (e.key === "Tab") {
           e.preventDefault()
-          recordViolation("keyboard_shortcut")
+          addViolation("keyboard_shortcut")
           return
         }
       }
 
-      // Alt+Tab (limited — most OSes handle this before the browser)
+      // Alt+Tab
       if (e.altKey && e.key === "Tab") {
         e.preventDefault()
-        recordViolation("keyboard_shortcut")
+        addViolation("keyboard_shortcut")
       }
     }
 
-    // Register all listeners in capture phase for maximum intercept priority
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    window.addEventListener("blur", handleBlur)
+    const handleContextMenu = (e: MouseEvent) => {
+      if (isArmedRef.current) {
+        e.preventDefault()
+        addViolation("contextmenu_blocked")
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown, true)
+    document.addEventListener("contextmenu", handleContextMenu, true)
+
+    const removeListeners = () => {
+      document.removeEventListener("keydown", handleKeyDown, true)
+      document.removeEventListener("contextmenu", handleContextMenu, true)
+    }
+    cleanupFnsRef.current.push(removeListeners)
+
+    return removeListeners
+  }, [enabled, addViolation])
+
+  // ── Clipboard isolation ──
+  useEffect(() => {
+    if (!enabled) return
+
+    const handleCopy = (e: ClipboardEvent) => {
+      if (isArmedRef.current) {
+        e.preventDefault()
+        addViolation("copy_blocked")
+      }
+    }
+    const handlePaste = (e: ClipboardEvent) => {
+      if (isArmedRef.current) {
+        e.preventDefault()
+        addViolation("paste_blocked")
+      }
+    }
+    const handleCut = (e: ClipboardEvent) => {
+      if (isArmedRef.current) {
+        e.preventDefault()
+        addViolation("cut_blocked")
+      }
+    }
+
     document.addEventListener("copy", handleCopy, true)
     document.addEventListener("paste", handlePaste, true)
     document.addEventListener("cut", handleCut, true)
-    document.addEventListener("contextmenu", handleContextMenu, true)
-    document.addEventListener("keydown", handleKeyDown, true)
 
     const removeListeners = () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      window.removeEventListener("blur", handleBlur)
       document.removeEventListener("copy", handleCopy, true)
       document.removeEventListener("paste", handlePaste, true)
       document.removeEventListener("cut", handleCut, true)
-      document.removeEventListener("contextmenu", handleContextMenu, true)
-      document.removeEventListener("keydown", handleKeyDown, true)
-      armedRef.current = false
     }
+    cleanupFnsRef.current.push(removeListeners)
 
-    cleanupRef.current = removeListeners
-
-    return () => {
-      removeListeners()
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {})
-      }
-    }
-  }, [enabled, recordViolation])
+    return removeListeners
+  }, [enabled, addViolation])
 
   return {
     violationCount: violationCountRef.current,

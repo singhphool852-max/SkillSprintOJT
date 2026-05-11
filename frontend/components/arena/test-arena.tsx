@@ -127,7 +127,7 @@ const statusStyle: Record<string, { color: string; bg: string; label: string }> 
 // ═══════════════════════════════════════════════
 
 interface TestArenaProps {
-  onActiveChange?: (active: boolean) => void
+  onActiveChange?: (active: boolean, sessionId?: string) => void
   editorRef?: React.MutableRefObject<HTMLTextAreaElement | null>
   submitHandlerRef?: React.MutableRefObject<(() => void) | null>
 }
@@ -144,7 +144,7 @@ export function TestArena({ onActiveChange, editorRef, submitHandlerRef }: TestA
     if (saved && savedTest) {
       setAttemptId(saved)
       setTestId(savedTest)
-      onActiveChange?.(true)
+      onActiveChange?.(true, saved)
       // Re-enter fullscreen for resumed session (won't arm — that happens inside ActiveTest)
       document.documentElement.requestFullscreen?.().catch(() => {})
     }
@@ -155,7 +155,7 @@ export function TestArena({ onActiveChange, editorRef, submitHandlerRef }: TestA
     setTestId(tId)
     localStorage.setItem("testArena_attemptId", aId)
     localStorage.setItem("testArena_testId", tId)
-    onActiveChange?.(true)
+    onActiveChange?.(true, aId)
   }
 
   function handleExit() {

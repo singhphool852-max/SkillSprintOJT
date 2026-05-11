@@ -11,6 +11,7 @@ const AUTOSAVE_LANG_KEY = "arena_autosave_lang"
 
 export default function ArenaPage() {
   const [isTestActive, setIsTestActive] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [violationToast, setViolationToast] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
@@ -25,14 +26,14 @@ export default function ArenaPage() {
     toastTimerRef.current = setTimeout(() => setViolationToast(null), 4000)
 
     // Fire-and-forget POST
-    const sessionId = localStorage.getItem("testArena_attemptId") || ""
+    if (!sessionId) return
     fetch(`${API_URL}/api/arena/violations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ type, count, sessionId }),
     }).catch(() => {})
-  }, [])
+  }, [sessionId])
 
   const handleAutoSubmit = useCallback(() => {
     submitHandlerRef.current?.()
@@ -89,11 +90,15 @@ export default function ArenaPage() {
   }, [isTestActive])
 
   // ── Handle test activation/deactivation ──
-  const handleActiveChange = useCallback((active: boolean) => {
+  const handleActiveChange = useCallback((active: boolean, sId?: string) => {
     setIsTestActive(active)
+    if (active && sId) {
+      setSessionId(sId)
+    }
     if (!active) {
       // Cleanup on deactivation
       antiCheatCleanup()
+      setSessionId(null)
       localStorage.removeItem(AUTOSAVE_KEY)
       localStorage.removeItem(AUTOSAVE_LANG_KEY)
     }
