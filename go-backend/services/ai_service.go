@@ -132,6 +132,79 @@ Respond ONLY with JSON.`, question, correctAnswer, userAnswer, maxScore)
 	return &eval, nil
 }
 
+// GenerateSimilarQuestions creates variations of a specific question to help students master a concept they struggled with.
+func GenerateSimilarQuestions(originalPrompt string, topic string, difficulty string, count int) ([]GeneratedQuestion, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY not found")
+	}
+
+	prompt := fmt.Sprintf(`You are an adaptive learning assistant.
+Original Question the student failed: "%s"
+Topic: %s
+Difficulty: %s
+
+Task: Generate EXACTLY %d similar but unique MCQ questions that test the SAME concept or a closely related concept.
+Return ONLY a JSON array of objects with structure:
+[
+  {
+    "type": "mcq",
+    "prompt": "new unique question text",
+    "options": ["A", "B", "C", "D"],
+    "answer": "correct option text",
+    "explanation": "clear technical explanation",
+    "difficulty": "%s"
+  }
+]`, originalPrompt, topic, difficulty, count, difficulty)
+
+	type Part struct{ Text string `json:"text"` }
+	type Content struct{ Parts []Part `json:"parts"` }
+	type RequestBody struct{ Contents []Content `json:"contents"` }
+
+	reqBody := RequestBody{Contents: []Content{{Parts: []Part{{Text: prompt}}}}}
+	jsonData, _ := json.Marshal(reqBody)
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini API error: %d", resp.StatusCode)
+	}
+
+	type GeminiResponse struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	var geminiResp GeminiResponse
+	json.Unmarshal(respBody, &geminiResp)
+	
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from AI")
+	}
+
+	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
+	cleaned := cleanGeminiResponse(rawText)
+
+	var questions []GeneratedQuestion
+	if err := json.Unmarshal([]byte(cleaned), &questions); err != nil {
+		return nil, err
+	}
+
+	return questions, nil
+}
+
 // ---------- Gemini Question Generation ----------
 
 // GeneratedQuestion is the struct returned by GenerateQuestions.
