@@ -1,62 +1,78 @@
 package database
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"backend/models"
 
-	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
 
+// ConnectDB initializes the MySQL connection using environment variables.
 func ConnectDB() {
-	var database *gorm.DB
-	var err error
+	user := os.Getenv("DB_USER")
+	pass := os.Getenv("DB_PASSWORD")
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	name := os.Getenv("DB_NAME")
 
-	// 1. Detect Environment & Connection String
-	postgresDSN := os.Getenv("DATABASE_URL")
-	mysqlDSN := os.Getenv("MYSQL_DSN")
+	// Fallback to a single DSN string if provided (convenient for some cloud providers)
+	dsn := os.Getenv("MYSQL_DSN")
 
-	if postgresDSN != "" {
-		log.Println("[DB] Connecting to PostgreSQL (Production)...")
-		database, err = gorm.Open(postgres.Open(postgresDSN), &gorm.Config{})
-	} else if mysqlDSN != "" {
-		log.Println("[DB] Connecting to MySQL...")
-		database, err = gorm.Open(mysql.Open(mysqlDSN), &gorm.Config{})
-	} else {
-		log.Println("[DB] No cloud DB found. Falling back to local SQLite (dev.db)...")
-		database, err = gorm.Open(sqlite.Open("dev.db"), &gorm.Config{})
+	if dsn == "" {
+		// Build DSN from individual components
+		// Example: user:pass@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True&loc=Local
+		if user == "" || host == "" || name == "" {
+			log.Fatal("[DB] Critical environment variables missing (DB_USER, DB_HOST, DB_NAME)")
+		}
+		if port == "" {
+			port = "3306"
+		}
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", 
+			user, pass, host, port, name)
 	}
+
+	log.Printf("[DB] Connecting to MySQL at %s:%s/%s...", host, port, name)
+
+	// Open connection with detailed logging in development
+	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 
 	if err != nil {
-		log.Fatal("[DB] Failed to connect to database:", err)
+		log.Fatal("[DB] Failed to connect to MySQL database:", err)
 	}
 
-	// 2. Configure Connection Pool
+	// Configure Connection Pool
 	sqlDB, err := database.DB()
 	if err == nil {
 		sqlDB.SetMaxOpenConns(100)
-		sqlDB.SetMaxIdleConns(20)
+		sqlDB.SetMaxIdleConns(25)
 		sqlDB.SetConnMaxLifetime(5 * time.Minute)
-		
-		// SQLite specific performance tweaks
-		if postgresDSN == "" && mysqlDSN == "" {
-			database.Exec("PRAGMA journal_mode=WAL;")
-			database.Exec("PRAGMA synchronous=NORMAL;")
-		}
 	}
 
 	DB = database
-	log.Println("[DB] Database connection established")
+	log.Println("[DB] MySQL connection established successfully")
 
-	// 3. Auto-Migrate Models
-	err = database.AutoMigrate(
+	// Run Auto-Migrations for all models to ensure schema parity
+	MigrateModels()
+
+	// Bootstrap essential data
+	SeedTrainingQuestions()
+	SyncCategoriesToTopics()
+}
+
+// MigrateModels ensures all tables exist with correct relationships and indexes
+func MigrateModels() {
+	log.Println("[DB] Running auto-migrations...")
+	err := DB.AutoMigrate(
 		&models.User{},
 		&models.QuizCategory{},
 		&models.Arena{},
@@ -68,6 +84,8 @@ func ConnectDB() {
 		&models.Test{},
 		&models.TestQuestion{},
 		&models.TestMCQOption{},
+		&models.TestCodingDetail{},
+		&models.TestCase{},
 		&models.TestAttempt{},
 		&models.TestSubmission{},
 		&models.TestResult{},
@@ -81,12 +99,8 @@ func ConnectDB() {
 	)
 
 	if err != nil {
-		log.Println("[DB] Migration error (non-fatal):", err)
+		log.Println("[DB] Migration warning:", err)
 	}
-
-	// Seed required data
-	SeedTrainingQuestions()
-	SyncCategoriesToTopics()
 }
 
 func SyncCategoriesToTopics() {
@@ -97,7 +111,7 @@ func SyncCategoriesToTopics() {
 		var exists int64
 		DB.Model(&models.Topic{}).Where("id = ? OR slug = ?", cat.ID, cat.Slug).Count(&exists)
 		if exists == 0 {
-			log.Printf("[SYNC] Migrating category %s to topics table", cat.Name)
+			log.Printf("[SYNC] Mapping category %s to topics table", cat.Name)
 			DB.Create(&models.Topic{
 				ID:   cat.ID,
 				Name: cat.Name,

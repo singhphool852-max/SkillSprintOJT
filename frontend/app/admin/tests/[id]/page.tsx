@@ -110,18 +110,14 @@ export default function AdminTestDetailPage() {
 
   const fetchTest = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/admin/tests`, { credentials: "include" })
+      // 1. Fetch test metadata deeply (includes questions, options, details via backend Preload)
+      const res = await fetch(`${API}/api/admin/tests/${testId}`, { credentials: "include" })
       if (res.ok) {
-        const tests: Test[] = await res.json()
-        const found = tests.find((t) => t.id === testId)
-        if (found) setTest(found)
-      }
-
-      // Fetch questions via admin endpoint
-      const qRes = await fetch(`${API}/api/admin/tests/${testId}/questions`, { credentials: "include" })
-      if (qRes.ok) {
-        const qs = await qRes.json()
-        setQuestions(qs || [])
+        const data: Test & { questions?: Question[] } = await res.json()
+        setTest(data)
+        if (data.questions) {
+          setQuestions(data.questions)
+        }
       }
     } catch (e) {
       console.error("Fetch failed:", e)

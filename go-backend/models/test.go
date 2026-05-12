@@ -14,6 +14,7 @@ type Test struct {
 	TopicID         string     `gorm:"column:topicId" json:"topicId,omitempty"`
 	StartTime       time.Time  `gorm:"column:startTime" json:"startTime"`
 	DurationSeconds int        `gorm:"column:durationSeconds" json:"durationSeconds"`
+	Difficulty      string     `gorm:"column:difficulty" json:"difficulty"` // "easy", "medium", "hard"
 	MaxScore        int        `gorm:"column:maxScore" json:"maxScore"`
 	IsPublished     bool       `gorm:"column:isPublished;default:false" json:"isPublished"`
 	IsActive        bool       `gorm:"column:isActive;default:false" json:"isActive"`
@@ -24,8 +25,8 @@ type Test struct {
 	DeletedBy       string     `gorm:"column:deletedBy" json:"deletedBy,omitempty"`
 
 	Creator   User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
-	Topic     *Topic         `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
-	Questions []TestQuestion `gorm:"foreignKey:TestID" json:"questions,omitempty"`
+	Topic     *Topic         `gorm:"foreignKey:TopicID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"topic,omitempty"`
+	Questions []TestQuestion `gorm:"foreignKey:TestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"questions,omitempty"`
 }
 
 func (Test) TableName() string {
@@ -47,9 +48,9 @@ type TestQuestion struct {
 	UpdatedAt   time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
 	Test         Test              `gorm:"foreignKey:TestID" json:"-"`
-	MCQOptions   []TestMCQOption   `gorm:"foreignKey:QuestionID" json:"mcqOptions,omitempty"`
-	CodingDetail *TestCodingDetail `gorm:"foreignKey:QuestionID" json:"codingDetail,omitempty"`
-	TestCases    []TestCase        `gorm:"foreignKey:QuestionID" json:"testCases,omitempty"`
+	MCQOptions   []TestMCQOption   `gorm:"foreignKey:QuestionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"mcqOptions,omitempty"`
+	CodingDetail *TestCodingDetail `gorm:"foreignKey:QuestionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"codingDetail,omitempty"`
+	TestCases    []TestCase        `gorm:"foreignKey:QuestionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"testCases,omitempty"`
 }
 
 func (TestQuestion) TableName() string {
@@ -116,9 +117,9 @@ type TestAttempt struct {
 	ViolationCount  int       `gorm:"column:violationCount;default:0" json:"violationCount"`
 	IsAutoSubmitted bool      `gorm:"column:isAutoSubmitted;default:false" json:"isAutoSubmitted"`
 
-	User        User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Test        Test             `gorm:"foreignKey:TestID" json:"test,omitempty"`
-	Submissions []TestSubmission `gorm:"foreignKey:AttemptID" json:"submissions,omitempty"`
+	User        User             `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+	Test        Test             `gorm:"foreignKey:TestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"test,omitempty"`
+	Submissions []TestSubmission `gorm:"foreignKey:AttemptID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"submissions,omitempty"`
 }
 
 func (TestAttempt) TableName() string {
