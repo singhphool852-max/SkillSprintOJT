@@ -7,50 +7,56 @@ import (
 
 	"backend/models"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
 
 func ConnectDB() {
-	// Get MySQL DSN from environment
-	dsn := os.Getenv("MYSQL_DSN")
-	if dsn == "" {
-		log.Fatal("[DB] MYSQL_DSN environment variable is not set")
+	var database *gorm.DB
+	var err error
+
+	// 1. Detect Environment & Connection String
+	postgresDSN := os.Getenv("DATABASE_URL")
+	mysqlDSN := os.Getenv("MYSQL_DSN")
+
+	if postgresDSN != "" {
+		log.Println("[DB] Connecting to PostgreSQL (Production)...")
+		database, err = gorm.Open(postgres.Open(postgresDSN), &gorm.Config{})
+	} else if mysqlDSN != "" {
+		log.Println("[DB] Connecting to MySQL...")
+		database, err = gorm.Open(mysql.Open(mysqlDSN), &gorm.Config{})
+	} else {
+		log.Println("[DB] No cloud DB found. Falling back to local SQLite (dev.db)...")
+		database, err = gorm.Open(sqlite.Open("dev.db"), &gorm.Config{})
 	}
 
-	log.Println("[DB] Connecting to MySQL...")
-
-	// Open MySQL connection with GORM
-	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("[DB] Failed to connect to MySQL:", err)
+		log.Fatal("[DB] Failed to connect to database:", err)
 	}
 
-	// Get underlying sql.DB for connection pool configuration
+	// 2. Configure Connection Pool
 	sqlDB, err := database.DB()
-	if err != nil {
-		log.Fatal("[DB] Failed to get database instance:", err)
+	if err == nil {
+		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetMaxIdleConns(20)
+		sqlDB.SetConnMaxLifetime(5 * time.Minute)
+		
+		// SQLite specific performance tweaks
+		if postgresDSN == "" && mysqlDSN == "" {
+			database.Exec("PRAGMA journal_mode=WAL;")
+			database.Exec("PRAGMA synchronous=NORMAL;")
+		}
 	}
 
-	// Configure connection pool for high concurrency
-	sqlDB.SetMaxOpenConns(100)                  // Maximum 100 concurrent connections
-	sqlDB.SetMaxIdleConns(20)                   // Keep 20 idle connections ready
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)   // Recycle connections every 5 minutes
-	sqlDB.SetConnMaxIdleTime(2 * time.Minute)   // Close idle connections after 2 minutes
+	DB = database
+	log.Println("[DB] Database connection established")
 
-	// Test connection
-	if err := sqlDB.Ping(); err != nil {
-		log.Fatal("[DB] MySQL ping failed:", err)
-	}
-
-	log.Println("[DB] MySQL connected successfully")
-
-	// Auto-migrate all models
+	// 3. Auto-Migrate Models
 	err = database.AutoMigrate(
-		// Existing models
 		&models.User{},
 		&models.QuizCategory{},
 		&models.Arena{},
@@ -58,44 +64,31 @@ func ConnectDB() {
 		&models.Question{},
 		&models.Option{},
 		&models.Attempt{},
-		&models.AttemptAnswer{},
-		// Test module models
-		&models.Topic{},
+		&models.Result{},
 		&models.Test{},
 		&models.TestQuestion{},
 		&models.TestMCQOption{},
-		&models.TestCodingDetail{},
-		&models.TestCase{},
 		&models.TestAttempt{},
 		&models.TestSubmission{},
 		&models.TestResult{},
+		&models.Topic{},
 		&models.TestViolation{},
-
-		// Training module models
 		&models.TrainingQuestion{},
 		&models.TrainingSession{},
 		&models.Upload{},
-
-		// Wrong question tracking & analytics
 		&models.UserWrongQuestion{},
 		&models.UserTopicStats{},
 	)
+
 	if err != nil {
-		log.Println("[DB] Database migration error (ignoring if table already populated):", err)
+		log.Println("[DB] Migration error (non-fatal):", err)
 	}
 
-	DB = database
-	log.Println("[DB] Database migration completed")
-
-	// Run seed data
-	SeedDB()
+	// Seed required data
 	SeedTrainingQuestions()
-	
-	// Sync old categories to new topics
 	SyncCategoriesToTopics()
 }
 
-// SyncCategoriesToTopics ensures that any old QuizCategory is available as a Topic
 func SyncCategoriesToTopics() {
 	var categories []models.QuizCategory
 	DB.Find(&categories)
