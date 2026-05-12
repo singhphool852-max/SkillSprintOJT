@@ -10,9 +10,9 @@ import (
 // ──────────────────────────────────────────────
 type UserWrongQuestion struct {
 	ID             string    `gorm:"primaryKey;column:id" json:"id"`
-	UserID         string    `gorm:"column:userId;index" json:"userId"`
+	UserID         string    `gorm:"column:userId;uniqueIndex:idx_user_question" json:"userId"`
 	AttemptID      string    `gorm:"column:attemptId" json:"attemptId"`
-	QuestionID     string    `gorm:"column:questionId" json:"questionId"`
+	QuestionID     string    `gorm:"column:questionId;uniqueIndex:idx_user_question" json:"questionId"`
 	TestID         string    `gorm:"column:testId" json:"testId"`
 	TopicID        string    `gorm:"column:topicId;index" json:"topicId"`
 	QuestionType   string    `gorm:"column:questionType" json:"questionType"`       // "mcq" or "coding"
@@ -25,13 +25,14 @@ type UserWrongQuestion struct {
 	PointsPossible int       `gorm:"column:pointsPossible" json:"pointsPossible"`
 	ReviewCount    int       `gorm:"column:reviewCount;default:0" json:"reviewCount"`
 	CorrectStreak  int       `gorm:"column:correctStreak;default:0" json:"correctStreak"` // Number of times answered correctly in training
+	WrongCount     int       `gorm:"column:wrongCount;default:1" json:"wrongCount"`       // Total times failed across all tests
 	LastReviewedAt time.Time `gorm:"column:lastReviewedAt" json:"lastReviewedAt"`
 	MasteredAt     time.Time `gorm:"column:masteredAt" json:"masteredAt"`
 	CreatedAt      time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 
-	User     User         `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Question TestQuestion `gorm:"foreignKey:QuestionID" json:"question,omitempty"`
-	Test     Test         `gorm:"foreignKey:TestID" json:"test,omitempty"`
+	User     User         `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+	Question TestQuestion `gorm:"foreignKey:QuestionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"question,omitempty"`
+	Test     Test         `gorm:"foreignKey:TestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"test,omitempty"`
 }
 
 func (UserWrongQuestion) TableName() string {

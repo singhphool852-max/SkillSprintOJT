@@ -54,7 +54,8 @@ func StartAdaptiveTraining(c *gin.Context) {
 		if req.TopicID != "" {
 			query = query.Where("topicId = ?", req.TopicID)
 		}
-		query.Order("reviewCount ASC, createdAt DESC").Limit(targetCount).Find(&mistakes)
+		// PRIORITIZE: Highest WrongCount first (questions failed many times)
+		query.Order("wrongCount DESC, reviewCount ASC, createdAt DESC").Limit(targetCount).Find(&mistakes)
 
 		for _, m := range mistakes {
 			// Convert UserWrongQuestion back to TrainingQuestion format for the UI

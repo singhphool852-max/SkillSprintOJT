@@ -1,56 +1,78 @@
 package database
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"backend/models"
 
-	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
 
+// ConnectDB initializes the MySQL connection using environment variables.
 func ConnectDB() {
-	// Get MySQL DSN from environment
+	user := os.Getenv("DB_USER")
+	pass := os.Getenv("DB_PASSWORD")
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	name := os.Getenv("DB_NAME")
+
+	// Fallback to a single DSN string if provided (convenient for some cloud providers)
 	dsn := os.Getenv("MYSQL_DSN")
+
 	if dsn == "" {
-		log.Fatal("[DB] MYSQL_DSN environment variable is not set")
+		// Build DSN from individual components
+		// Example: user:pass@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True&loc=Local
+		if user == "" || host == "" || name == "" {
+			log.Fatal("[DB] Critical environment variables missing (DB_USER, DB_HOST, DB_NAME)")
+		}
+		if port == "" {
+			port = "3306"
+		}
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", 
+			user, pass, host, port, name)
 	}
 
-	log.Println("[DB] Connecting to MySQL...")
+	log.Printf("[DB] Connecting to MySQL at %s:%s/%s...", host, port, name)
 
-	// Open MySQL connection with GORM
-	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	// Open connection with detailed logging in development
+	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+
 	if err != nil {
-		log.Fatal("[DB] Failed to connect to MySQL:", err)
+		log.Fatal("[DB] Failed to connect to MySQL database:", err)
 	}
 
-	// Get underlying sql.DB for connection pool configuration
+	// Configure Connection Pool
 	sqlDB, err := database.DB()
-	if err != nil {
-		log.Fatal("[DB] Failed to get database instance:", err)
+	if err == nil {
+		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetMaxIdleConns(25)
+		sqlDB.SetConnMaxLifetime(5 * time.Minute)
 	}
 
-	// Configure connection pool for high concurrency
-	sqlDB.SetMaxOpenConns(100)                  // Maximum 100 concurrent connections
-	sqlDB.SetMaxIdleConns(20)                   // Keep 20 idle connections ready
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)   // Recycle connections every 5 minutes
-	sqlDB.SetConnMaxIdleTime(2 * time.Minute)   // Close idle connections after 2 minutes
+	DB = database
+	log.Println("[DB] MySQL connection established successfully")
 
-	// Test connection
-	if err := sqlDB.Ping(); err != nil {
-		log.Fatal("[DB] MySQL ping failed:", err)
-	}
+	// Run Auto-Migrations for all models to ensure schema parity
+	MigrateModels()
 
-	log.Println("[DB] MySQL connected successfully")
+	// Bootstrap essential data
+	SeedTrainingQuestions()
+	SyncCategoriesToTopics()
+}
 
-	// Auto-migrate all models
-	err = database.AutoMigrate(
-		// Existing models
+// MigrateModels ensures all tables exist with correct relationships and indexes
+func MigrateModels() {
+	log.Println("[DB] Running auto-migrations...")
+	err := DB.AutoMigrate(
 		&models.User{},
 		&models.QuizCategory{},
 		&models.Arena{},
@@ -58,9 +80,7 @@ func ConnectDB() {
 		&models.Question{},
 		&models.Option{},
 		&models.Attempt{},
-		&models.AttemptAnswer{},
-		// Test module models
-		&models.Topic{},
+		&models.Result{},
 		&models.Test{},
 		&models.TestQuestion{},
 		&models.TestMCQOption{},
@@ -69,33 +89,20 @@ func ConnectDB() {
 		&models.TestAttempt{},
 		&models.TestSubmission{},
 		&models.TestResult{},
+		&models.Topic{},
 		&models.TestViolation{},
-
-		// Training module models
 		&models.TrainingQuestion{},
 		&models.TrainingSession{},
 		&models.Upload{},
-
-		// Wrong question tracking & analytics
 		&models.UserWrongQuestion{},
 		&models.UserTopicStats{},
 	)
+
 	if err != nil {
-		log.Println("[DB] Database migration error (ignoring if table already populated):", err)
+		log.Println("[DB] Migration warning:", err)
 	}
-
-	DB = database
-	log.Println("[DB] Database migration completed")
-
-	// Run seed data
-	SeedDB()
-	SeedTrainingQuestions()
-	
-	// Sync old categories to new topics
-	SyncCategoriesToTopics()
 }
 
-// SyncCategoriesToTopics ensures that any old QuizCategory is available as a Topic
 func SyncCategoriesToTopics() {
 	var categories []models.QuizCategory
 	DB.Find(&categories)
@@ -104,7 +111,7 @@ func SyncCategoriesToTopics() {
 		var exists int64
 		DB.Model(&models.Topic{}).Where("id = ? OR slug = ?", cat.ID, cat.Slug).Count(&exists)
 		if exists == 0 {
-			log.Printf("[SYNC] Migrating category %s to topics table", cat.Name)
+			log.Printf("[SYNC] Mapping category %s to topics table", cat.Name)
 			DB.Create(&models.Topic{
 				ID:   cat.ID,
 				Name: cat.Name,

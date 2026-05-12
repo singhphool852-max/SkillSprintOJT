@@ -12,6 +12,7 @@ import {
   Plus,
   Shield,
   Target,
+  Trash2,
   Zap,
 } from "lucide-react"
 import { API_URL } from "@/lib/api-config"
@@ -47,6 +48,7 @@ export default function AdminTestsPage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [topicId, setTopicId] = useState("")
+  const [difficulty, setDifficulty] = useState("easy")
   const [startTime, setStartTime] = useState("")
   const [duration, setDuration] = useState(3600)
 
@@ -95,6 +97,7 @@ export default function AdminTestsPage() {
           title: title.trim(),
           description: description.trim(),
           topicId: topicId || undefined,
+          difficulty: difficulty,
           startTime: new Date(startTime).toISOString(),
           durationSeconds: duration,
         }),
@@ -147,6 +150,26 @@ export default function AdminTestsPage() {
     }
   }
 
+  async function handleDelete(testId: string, title: string) {
+    if (!confirm(`Are you sure you want to permanently delete "${title}"? This will remove all questions and student attempts.`)) {
+      return
+    }
+
+    try {
+      const res = await fetch(`${API}/api/admin/tests/${testId}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      if (res.ok) {
+        await fetchTests()
+      } else {
+        alert("Failed to delete test. Check logs.")
+      }
+    } catch (e) {
+      console.error("Delete failed:", e)
+    }
+  }
+
   return (
     <div className="relative min-h-screen">
       <div className="absolute inset-0 grid-bg opacity-20" />
@@ -188,7 +211,7 @@ export default function AdminTestsPage() {
               </span>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid gap-5 sm:grid-cols-3">
               {/* Title */}
               <div className="flex flex-col gap-2">
                 <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
@@ -218,6 +241,22 @@ export default function AdminTestsPage() {
                   {topics.map((t) => (
                     <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
+                </select>
+              </div>
+
+              {/* Difficulty */}
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
+                  DIFFICULTY
+                </label>
+                <select
+                  value={difficulty}
+                  onChange={(e) => setDifficulty(e.target.value)}
+                  className="bg-deep-bg/80 border border-panel-border px-4 py-2.5 font-mono text-sm text-foreground focus:border-neon-pink/50 focus:outline-none"
+                >
+                  <option value="easy">EASY</option>
+                  <option value="medium">MEDIUM</option>
+                  <option value="hard">HARD</option>
                 </select>
               </div>
             </div>
@@ -389,6 +428,14 @@ export default function AdminTestsPage() {
                       <Eye className="h-3 w-3" />
                     )}
                     {test.isPublished ? "UNPUBLISH" : "PUBLISH"}
+                  </button>
+
+                  <button
+                    onClick={() => handleDelete(test.id, test.title)}
+                    className="flex items-center justify-center p-1.5 border border-panel-border text-muted-foreground hover:border-neon-pink/40 hover:text-neon-pink transition-all"
+                    title="Delete Test Permanently"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>

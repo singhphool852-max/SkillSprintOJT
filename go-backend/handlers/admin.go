@@ -18,6 +18,7 @@ type CreateTestRequest struct {
 	Title           string    `json:"title" binding:"required"`
 	Description     string    `json:"description"`
 	TopicID         string    `json:"topicId"`
+	Difficulty      string    `json:"difficulty"`
 	StartTime       time.Time `json:"startTime" binding:"required"`
 	DurationSeconds int       `json:"durationSeconds" binding:"required"`
 }
@@ -66,6 +67,7 @@ func CreateTest(c *gin.Context) {
 		Title:           req.Title,
 		Description:     req.Description,
 		TopicID:         req.TopicID,
+		Difficulty:      req.Difficulty,
 		StartTime:       req.StartTime,
 		DurationSeconds: req.DurationSeconds,
 		IsPublished:     false,
@@ -85,7 +87,16 @@ func CreateTest(c *gin.Context) {
 // ──────────────────────────────────────────────
 func ListTests(c *gin.Context) {
 	var tests []models.Test
-	query := database.DB.Preload("Creator").Preload("Topic").Preload("Questions").Order("createdAt desc")
+	// DEEP PRELOAD: Ensure questions and ALL their nested associations (options, details, cases) are loaded.
+	// This prevents the "questions disappearing after refresh" issue in the UI.
+	query := database.DB.
+		Preload("Creator").
+		Preload("Topic").
+		Preload("Questions").
+		Preload("Questions.MCQOptions").
+		Preload("Questions.CodingDetail").
+		Preload("Questions.TestCases").
+		Order("createdAt desc")
 
 	// By default, filter out soft-deleted tests
 	if c.Query("includeDeleted") != "true" {
@@ -163,6 +174,53 @@ func ActivateTest(c *gin.Context) {
 	database.DB.Where("id = ?", testID).First(&test)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Test activated", "testId": test.ID, "isActive": true, "startTime": test.StartTime})
+}
+
+// ──────────────────────────────────────────────
+// DeleteTest → DELETE /api/admin/tests/:id
+// Transactional cleanup of a test and all its questions/options/details/cases.
+// ──────────────────────────────────────────────
+func DeleteTest(c *gin.Context) {
+	testID := c.Param("id")
+
+	// Verify test exists
+	var test models.Test
+	if err := database.DB.Where("id = ?", testID).First(&test).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Test not found"})
+		return
+	}
+
+	// Begin transaction for safe cleanup
+	tx := database.DB.Begin()
+
+	// 1. Find all questions for this test
+	var questionIDs []string
+	tx.Model(&models.TestQuestion{}).Where("testId = ?", testID).Pluck("id", &questionIDs)
+
+	if len(questionIDs) > 0 {
+		// 2. Delete nested data for these questions
+		tx.Where("questionId IN ?", questionIDs).Delete(&models.TestMCQOption{})
+		tx.Where("questionId IN ?", questionIDs).Delete(&models.TestCodingDetail{})
+		tx.Where("questionId IN ?", questionIDs).Delete(&models.TestCase{})
+		
+		// 3. Delete the questions themselves
+		tx.Where("testId = ?", testID).Delete(&models.TestQuestion{})
+	}
+
+	// 4. Delete results and attempts (optional, but keeps DB clean)
+	tx.Where("testId = ?", testID).Delete(&models.TestResult{})
+	tx.Where("testId = ?", testID).Delete(&models.TestAttempt{})
+
+	// 5. Finally, delete the test itself
+	if err := tx.Delete(&test).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete test"})
+		return
+	}
+
+	tx.Commit()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Test and all associated data deleted successfully"})
 }
 
 // ──────────────────────────────────────────────

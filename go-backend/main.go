@@ -165,7 +165,7 @@ func main() {
 		admin.GET("/tests", handlers.ListTests)
 		admin.GET("/tests/:id", handlers.GetTestDetail)
 		admin.PUT("/tests/:id", handlers.UpdateTest)
-		admin.DELETE("/tests/:id", handlers.SoftDeleteTest)
+		admin.DELETE("/tests/:id", handlers.DeleteTest) // Map to permanent transactional delete
 		admin.POST("/tests/:id/restore", handlers.RestoreTest)
 		admin.DELETE("/tests/:id/permanent", handlers.PermanentDeleteTest)
 		admin.PATCH("/tests/:id/publish", handlers.PublishTest)

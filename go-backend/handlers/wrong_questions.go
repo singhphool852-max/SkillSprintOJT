@@ -58,79 +58,75 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 
 	for _, q := range questions {
 		sub, submitted := subMap[q.ID]
+		verdict := "skipped"
+		userAnswer := ""
+		correctAnswer := ""
 
-		if !submitted {
-			// Question was skipped
-			wrongQuestions = append(wrongQuestions, models.UserWrongQuestion{
-				ID:             uuid.New().String(),
-				UserID:         attempt.UserID,
-				AttemptID:      attempt.ID,
-				QuestionID:     q.ID,
-				TestID:         attempt.TestID,
-				TopicID:        test.TopicID,
-				QuestionType:   q.Type,
-				QuestionTitle:  q.Title,
-				UserAnswer:     "",
-				CorrectAnswer:  "",
-				Verdict:        "skipped",
-				PointsLost:     q.Points,
-				PointsPossible: q.Points,
-			})
-			continue
-		}
-
-		// Check if the answer was wrong
-		if sub.Verdict != "accepted" && sub.Verdict != "draft" && sub.Verdict != "" {
-			correctAnswer := ""
+		if submitted {
+			verdict = sub.Verdict
+			userAnswer = sub.Code
 			if q.Type == "mcq" {
-				// Find the correct option text
+				// Get selected option text
+				var selectedOpt models.TestMCQOption
+				if err := database.DB.Where("id = ?", sub.SelectedOptionID).First(&selectedOpt).Error; err == nil {
+					userAnswer = selectedOpt.OptionText
+				}
+				// Get correct option text
 				var correctOpt models.TestMCQOption
 				if err := database.DB.Where("questionId = ? AND isCorrect = ?", q.ID, true).First(&correctOpt).Error; err == nil {
 					correctAnswer = correctOpt.OptionText
 				}
 			}
+		}
 
-			userAnswer := ""
-			if q.Type == "mcq" {
-				// Get the text of the option the user selected
-				var selectedOpt models.TestMCQOption
-				if err := database.DB.Where("id = ?", sub.SelectedOptionID).First(&selectedOpt).Error; err == nil {
-					userAnswer = selectedOpt.OptionText
-				}
+		// LOGIC: If wrong or skipped, UPSERT into user_wrong_questions
+		if verdict != "accepted" && verdict != "draft" {
+			var existing models.UserWrongQuestion
+			err := database.DB.Where("userId = ? AND questionId = ?", attempt.UserID, q.ID).First(&existing).Error
+			
+			if err == nil {
+				// Update existing: increment wrong count and refresh snapshot
+				database.DB.Model(&existing).Updates(map[string]interface{}{
+					"attemptId":      attempt.ID,
+					"testId":         attempt.TestID,
+					"userAnswer":     userAnswer,
+					"correctAnswer":  correctAnswer,
+					"verdict":        verdict,
+					"wrongCount":     existing.WrongCount + 1,
+					"correctStreak":  0, // Reset streak on fresh failure
+					"masteredAt":     nil, // Un-master if they fail it again
+					"pointsLost":     q.Points - subScore(sub),
+					"pointsPossible": q.Points,
+				})
 			} else {
-				userAnswer = sub.Code
+				// Create new
+				database.DB.Create(&models.UserWrongQuestion{
+					ID:             uuid.New().String(),
+					UserID:         attempt.UserID,
+					AttemptID:      attempt.ID,
+					QuestionID:     q.ID,
+					TestID:         attempt.TestID,
+					TopicID:        test.TopicID,
+					QuestionType:   q.Type,
+					QuestionTitle:  q.Title,
+					UserAnswer:     userAnswer,
+					CorrectAnswer:  correctAnswer,
+					Verdict:        verdict,
+					WrongCount:     1,
+					PointsLost:     q.Points - subScore(sub),
+					PointsPossible: q.Points,
+				})
 			}
-
-			wrongQuestions = append(wrongQuestions, models.UserWrongQuestion{
-				ID:             uuid.New().String(),
-				UserID:         attempt.UserID,
-				AttemptID:      attempt.ID,
-				QuestionID:     q.ID,
-				TestID:         attempt.TestID,
-				TopicID:        test.TopicID,
-				QuestionType:   q.Type,
-				QuestionTitle:  q.Title,
-				UserAnswer:     userAnswer,
-				CorrectAnswer:  correctAnswer,
-				Verdict:        sub.Verdict,
-				PointsLost:     q.Points - sub.Score,
-				PointsPossible: q.Points,
-			})
 		}
-	}
-
-	if len(wrongQuestions) > 0 {
-		if err := database.DB.Create(&wrongQuestions).Error; err != nil {
-			log.Printf("[WRONG-Q] failed to save %d wrong questions: %v", len(wrongQuestions), err)
-		} else {
-			log.Printf("[WRONG-Q] saved %d wrong questions for attempt %s", len(wrongQuestions), attempt.ID)
-		}
-	} else {
-		log.Printf("[WRONG-Q] no wrong questions for attempt %s (perfect score!)", attempt.ID)
 	}
 
 	// Update topic stats
 	updateUserTopicStats(attempt.UserID, attempt.TestID)
+}
+
+func subScore(s *models.TestSubmission) int {
+	if s == nil { return 0 }
+	return s.Score
 }
 
 // ──────────────────────────────────────────────
