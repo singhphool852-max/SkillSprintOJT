@@ -80,7 +80,6 @@ func MigrateModels() {
 		&models.Question{},
 		&models.Option{},
 		&models.Attempt{},
-		&models.Result{},
 		&models.Test{},
 		&models.TestQuestion{},
 		&models.TestMCQOption{},
