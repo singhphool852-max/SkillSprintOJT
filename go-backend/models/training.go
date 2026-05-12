@@ -21,7 +21,7 @@ func (TrainingQuestion) TableName() string { return "training_questions" }
 
 // TrainingSession tracks a user's practice session.
 type TrainingSession struct {
-	SessionID   string    `gorm:"primaryKey;column:session_id" json:"session_id"` // UUID
+	SessionID   string    `gorm:"primaryKey;column:session_id;type:varchar(191)" json:"session_id"` // UUID
 	Topic       string    `gorm:"column:topic" json:"topic"`
 	QuestionIDs string    `gorm:"column:question_ids;type:text" json:"question_ids"` // JSON array e.g. [1,2,3]
 	Status      string    `gorm:"column:status" json:"status"`                       // pending | completed

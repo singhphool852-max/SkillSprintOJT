@@ -9,12 +9,12 @@ import (
 // from arena tests. Foundation for personalized training.
 // ──────────────────────────────────────────────
 type UserWrongQuestion struct {
-	ID             string    `gorm:"primaryKey;column:id" json:"id"`
-	UserID         string    `gorm:"column:userId;uniqueIndex:idx_user_question" json:"userId"`
-	AttemptID      string    `gorm:"column:attemptId" json:"attemptId"`
-	QuestionID     string    `gorm:"column:questionId;uniqueIndex:idx_user_question" json:"questionId"`
-	TestID         string    `gorm:"column:testId" json:"testId"`
-	TopicID        string    `gorm:"column:topicId;index" json:"topicId"`
+	ID             string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
+	UserID         string    `gorm:"column:userId;type:varchar(191);uniqueIndex:idx_user_question" json:"userId"`
+	AttemptID      string    `gorm:"column:attemptId;type:varchar(191)" json:"attemptId"`
+	QuestionID     string    `gorm:"column:questionId;type:varchar(191);uniqueIndex:idx_user_question" json:"questionId"`
+	TestID         string    `gorm:"column:testId;type:varchar(191)" json:"testId"`
+	TopicID        string    `gorm:"column:topicId;type:varchar(191);index" json:"topicId"`
 	QuestionType   string    `gorm:"column:questionType" json:"questionType"`       // "mcq" or "coding"
 	Difficulty     string    `gorm:"column:difficulty" json:"difficulty"`            // test-level difficulty
 	QuestionTitle  string    `gorm:"column:questionTitle" json:"questionTitle"`      // snapshot of question title
@@ -30,9 +30,9 @@ type UserWrongQuestion struct {
 	MasteredAt     time.Time `gorm:"column:masteredAt" json:"masteredAt"`
 	CreatedAt      time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 
-	User     User         `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
-	Question TestQuestion `gorm:"foreignKey:QuestionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"question,omitempty"`
-	Test     Test         `gorm:"foreignKey:TestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"test,omitempty"`
+	User     User         `gorm:"-" json:"user,omitempty"`
+	Question TestQuestion `gorm:"-" json:"question,omitempty"`
+	Test     Test         `gorm:"-" json:"test,omitempty"`
 }
 
 func (UserWrongQuestion) TableName() string {
@@ -44,9 +44,9 @@ func (UserWrongQuestion) TableName() string {
 // per user. Updated after each test submission.
 // ──────────────────────────────────────────────
 type UserTopicStats struct {
-	ID              string    `gorm:"primaryKey;column:id" json:"id"`
-	UserID          string    `gorm:"column:userId;uniqueIndex:idx_user_topic_stats" json:"userId"`
-	TopicID         string    `gorm:"column:topicId;uniqueIndex:idx_user_topic_stats" json:"topicId"`
+	ID              string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
+	UserID          string    `gorm:"column:userId;type:varchar(191);uniqueIndex:idx_user_topic_stats" json:"userId"`
+	TopicID         string    `gorm:"column:topicId;type:varchar(191);uniqueIndex:idx_user_topic_stats" json:"topicId"`
 	TopicName       string    `gorm:"column:topicName" json:"topicName"`
 	TotalAttempted  int       `gorm:"column:totalAttempted" json:"totalAttempted"`
 	TotalCorrect    int       `gorm:"column:totalCorrect" json:"totalCorrect"`
@@ -57,8 +57,8 @@ type UserTopicStats struct {
 	LastAttemptedAt time.Time `gorm:"column:lastAttemptedAt" json:"lastAttemptedAt"`
 	UpdatedAt       time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
-	User  User   `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Topic *Topic `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
+	User  User   `gorm:"-" json:"user,omitempty"`
+	Topic *Topic `gorm:"-" json:"topic,omitempty"`
 }
 
 func (UserTopicStats) TableName() string {
