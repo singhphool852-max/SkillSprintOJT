@@ -3,6 +3,7 @@ package handlers
 import (
 	"backend/database"
 	"backend/models"
+	"log"
 	"net/http"
 	"strings"
 
@@ -54,13 +55,8 @@ func CreateTopic(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&topic).Error; err != nil {
- main
-		log.Printf("[TOPIC ERROR] %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-
 		log.Printf("[TOPIC] Failed to create topic: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create topic: " + err.Error()})
- main
 		return
 	}
 

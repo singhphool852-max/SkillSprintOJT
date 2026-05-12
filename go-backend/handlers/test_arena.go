@@ -4,6 +4,7 @@ import (
 	"backend/database"
 	"backend/judge"
 	"backend/models"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -136,7 +137,8 @@ func JoinTest(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&attempt).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to join test"})
+		log.Printf("[JOIN ERROR] Failed to create test attempt: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to join test: %v", err)})
 		return
 	}
 
