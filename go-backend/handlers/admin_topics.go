@@ -54,7 +54,8 @@ func CreateTopic(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&topic).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create topic"})
+		log.Printf("[TOPIC ERROR] %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
