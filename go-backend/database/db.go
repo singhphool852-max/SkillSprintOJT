@@ -7,6 +7,7 @@ import (
 
 	"backend/models"
 
+	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -18,7 +19,6 @@ var DB *gorm.DB
 func ConnectDB() {
 	// Get MySQL DSN from environment
 	dsn := os.Getenv("MYSQL_DSN")
- main
 	if dsn == "" {
 		dsn = os.Getenv("MYSQL_URL")
 	}
@@ -26,8 +26,6 @@ func ConnectDB() {
 		dsn = os.Getenv("DATABASE_URL")
 	}
 
-
- main
 	if dsn == "" {
 		log.Fatal("[DB] FATAL: MYSQL_DSN environment variable is not set. Please set MYSQL_DSN in your environment variables.")
 	}
@@ -48,7 +46,7 @@ func ConnectDB() {
 	sqlDB, err := database.DB()
 	if err == nil {
 		sqlDB.SetMaxOpenConns(100)
-		sqlDB.SetMaxIdleConns(25)
+		sqlDB.SetMaxIdleConns(20)
 		sqlDB.SetConnMaxLifetime(5 * time.Minute)
 	}
 
