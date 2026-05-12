@@ -9,12 +9,12 @@ import (
 // from arena tests. Foundation for personalized training.
 // ──────────────────────────────────────────────
 type UserWrongQuestion struct {
-	ID             string    `gorm:"primaryKey;column:id" json:"id"`
-	UserID         string    `gorm:"column:userId;uniqueIndex:idx_user_question" json:"userId"`
-	AttemptID      string    `gorm:"column:attemptId" json:"attemptId"`
-	QuestionID     string    `gorm:"column:questionId;uniqueIndex:idx_user_question" json:"questionId"`
-	TestID         string    `gorm:"column:testId" json:"testId"`
-	TopicID        string    `gorm:"column:topicId;index" json:"topicId"`
+	ID             string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID         string    `gorm:"type:varchar(191);uniqueIndex:idx_user_question;column:userId" json:"userId"`
+	AttemptID      string    `gorm:"type:varchar(191);index;column:attemptId" json:"attemptId"`
+	QuestionID     string    `gorm:"type:varchar(191);uniqueIndex:idx_user_question;column:questionId" json:"questionId"`
+	TestID         string    `gorm:"type:varchar(191);index;column:testId" json:"testId"`
+	TopicID        string    `gorm:"type:varchar(191);index;column:topicId" json:"topicId"`
 	QuestionType   string    `gorm:"column:questionType" json:"questionType"`       // "mcq" or "coding"
 	Difficulty     string    `gorm:"column:difficulty" json:"difficulty"`            // test-level difficulty
 	QuestionTitle  string    `gorm:"column:questionTitle" json:"questionTitle"`      // snapshot of question title
@@ -44,9 +44,9 @@ func (UserWrongQuestion) TableName() string {
 // per user. Updated after each test submission.
 // ──────────────────────────────────────────────
 type UserTopicStats struct {
-	ID              string    `gorm:"primaryKey;column:id" json:"id"`
-	UserID          string    `gorm:"column:userId;uniqueIndex:idx_user_topic_stats" json:"userId"`
-	TopicID         string    `gorm:"column:topicId;uniqueIndex:idx_user_topic_stats" json:"topicId"`
+	ID              string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID          string    `gorm:"type:varchar(191);uniqueIndex:idx_user_topic_stats;column:userId" json:"userId"`
+	TopicID         string    `gorm:"type:varchar(191);uniqueIndex:idx_user_topic_stats;column:topicId" json:"topicId"`
 	TopicName       string    `gorm:"column:topicName" json:"topicName"`
 	TotalAttempted  int       `gorm:"column:totalAttempted" json:"totalAttempted"`
 	TotalCorrect    int       `gorm:"column:totalCorrect" json:"totalCorrect"`
@@ -57,8 +57,8 @@ type UserTopicStats struct {
 	LastAttemptedAt time.Time `gorm:"column:lastAttemptedAt" json:"lastAttemptedAt"`
 	UpdatedAt       time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
-	User  User   `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Topic *Topic `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
+	User  User   `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	Topic *Topic `gorm:"foreignKey:TopicID;constraint:OnDelete:CASCADE" json:"topic,omitempty"`
 }
 
 func (UserTopicStats) TableName() string {
