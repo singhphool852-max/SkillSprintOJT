@@ -7,16 +7,7 @@ interface ModeCardProps {
   description: string
   icon: LucideIcon
   duration: string
-  difficulty: "Beginner" | "Intermediate" | "Advanced"
-  color: "cyan" | "pink" | "yellow"
-}
-
-interface ModeCardProps {
-  title: string
-  description: string
-  icon: LucideIcon
-  duration: string
-  difficulty: "Beginner" | "Intermediate" | "Advanced"
+  difficulty: "Beginner" | "Intermediate" | "Advanced" | "Adaptive" | "Variable"
   color: "cyan" | "pink" | "yellow"
   isPremium?: boolean
   isActive?: boolean

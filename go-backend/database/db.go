@@ -3,40 +3,52 @@ package database
 import (
 	"log"
 	"os"
+	"time"
 
 	"backend/models"
 
-	"github.com/glebarez/sqlite"
-	"gorm.io/driver/postgres"
+	_ "github.com/go-sql-driver/mysql"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
 
 func ConnectDB() {
-	var database *gorm.DB
-	var err error
-
-	// Check for PostgreSQL connection string (Standard for Render/Heroku)
-	dbURL := os.Getenv("DATABASE_URL")
-
-	if dbURL != "" {
-		log.Println("[DB] DATABASE_URL found. Connecting to PostgreSQL...")
-		database, err = gorm.Open(postgres.Open(dbURL), &gorm.Config{})
-	} else {
-		// Fallback to SQLite for local development
-		log.Println("[DB] No DATABASE_URL found. Falling back to local SQLite (dev.db)...")
-		dsn := "../dev.db"
-		if _, err := os.Stat("dev.db"); err == nil {
-			dsn = "dev.db"
-		}
-		database, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	// Get MySQL DSN from environment
+	dsn := os.Getenv("MYSQL_DSN")
+	if dsn == "" {
+		log.Fatal("[DB] MYSQL_DSN environment variable is not set")
 	}
 
+	log.Println("[DB] Connecting to MySQL...")
+
+	// Open MySQL connection with GORM
+	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("Failed to connect to database!", err)
+		log.Fatal("[DB] Failed to connect to MySQL:", err)
 	}
 
+	// Get underlying sql.DB for connection pool configuration
+	sqlDB, err := database.DB()
+	if err != nil {
+		log.Fatal("[DB] Failed to get database instance:", err)
+	}
+
+	// Configure connection pool for high concurrency
+	sqlDB.SetMaxOpenConns(100)                  // Maximum 100 concurrent connections
+	sqlDB.SetMaxIdleConns(20)                   // Keep 20 idle connections ready
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)   // Recycle connections every 5 minutes
+	sqlDB.SetConnMaxIdleTime(2 * time.Minute)   // Close idle connections after 2 minutes
+
+	// Test connection
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatal("[DB] MySQL ping failed:", err)
+	}
+
+	log.Println("[DB] MySQL connected successfully")
+
+	// Auto-migrate all models
 	err = database.AutoMigrate(
 		// Existing models
 		&models.User{},
@@ -69,47 +81,17 @@ func ConnectDB() {
 		&models.UserTopicStats{},
 	)
 	if err != nil {
-		log.Println("Database migration error (ignoring if table already populated):", err)
-	}
-
-	sqlDB, err := database.DB()
-	if err == nil {
-		sqlDB.SetMaxOpenConns(1)
-		database.Exec("PRAGMA journal_mode=WAL;")
-		database.Exec("PRAGMA synchronous=NORMAL;")
+		log.Println("[DB] Database migration error (ignoring if table already populated):", err)
 	}
 
 	DB = database
-	log.Println("Database connection established (WAL mode enabled)")
+	log.Println("[DB] Database migration completed")
 
-	// ── Explicit schema fixes ──
-	migrations := []string{
-		"ALTER TABLE test_attempts ADD COLUMN totalQuestions integer DEFAULT 0",
-		"ALTER TABLE test_attempts ADD COLUMN timeTaken integer DEFAULT 0",
-		"ALTER TABLE test_attempts ADD COLUMN violationCount integer DEFAULT 0",
-		"ALTER TABLE test_attempts ADD COLUMN mode text DEFAULT 'arena'",
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_user_test ON test_attempts(userId, testId)",
-		"ALTER TABLE tests ADD COLUMN deletedAt datetime",
-		"ALTER TABLE tests ADD COLUMN deletedBy text DEFAULT ''",
-		"ALTER TABLE test_results ADD COLUMN topicId text DEFAULT ''",
-		"ALTER TABLE test_results ADD COLUMN topicName text DEFAULT ''",
-		"ALTER TABLE test_results ADD COLUMN timeTaken integer DEFAULT 0",
-		"CREATE INDEX IF NOT EXISTS idx_attempt_test_score ON test_attempts(testId, score DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_attempt_user ON test_attempts(userId)",
-		"CREATE INDEX IF NOT EXISTS idx_submissions_attempt ON test_submissions(attemptId)",
-		"CREATE INDEX IF NOT EXISTS idx_wrong_questions_user ON user_wrong_questions(userId)",
-		"CREATE INDEX IF NOT EXISTS idx_wrong_questions_topic ON user_wrong_questions(userId, topicId)",
-		"CREATE INDEX IF NOT EXISTS idx_test_results_user ON test_results(userId)",
-		"CREATE INDEX IF NOT EXISTS idx_tests_deleted ON tests(deletedAt)",
-	}
-	for _, m := range migrations {
-		database.Exec(m)
-	}
-
+	// Run seed data
 	SeedDB()
 	SeedTrainingQuestions()
 	
-	// NEW: Sync old categories to new topics so Admin Panel has data immediately
+	// Sync old categories to new topics
 	SyncCategoriesToTopics()
 }
 

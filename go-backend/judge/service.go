@@ -39,8 +39,8 @@ func GetService() *ExecutionService {
 	serviceOnce.Do(func() {
 		service = &ExecutionService{
 			executor:      newDefaultExecutor(),
-			maxConcurrent: 10, // max parallel executions
-			semaphore:     make(chan struct{}, 10),
+			maxConcurrent: 100, // max parallel executions (supports 100+ concurrent users)
+			semaphore:     make(chan struct{}, 100),
 		}
 	})
 	return service
@@ -92,7 +92,7 @@ func (s *ExecutionService) RunTestCases(code, language string, inputs []string, 
 		}
 
 		results[i] = tcr
-		log.Printf("[SERVICE] testcase %d lang=%s pass=%v actual=%q expected=%q",
+		log.Printf("[JUDGE] case %d lang=%s pass=%v\nACTUAL:   %q\nEXPECTED: %q",
 			i, language, tcr.Pass, Normalize(tcr.Actual), Normalize(tcr.Expected))
 	}
 	return results

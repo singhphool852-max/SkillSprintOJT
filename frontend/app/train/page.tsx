@@ -11,15 +11,13 @@ import {
   Code2,
   Database,
   Layout,
-  MessageSquare,
   Cpu,
   Timer,
   Target,
-  UserCheck,
   Zap,
   Swords
 } from "lucide-react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { getTrainingHistory, recommendDifficulty } from "@/lib/training-history"
 import { API_URL } from "@/lib/api-config"
@@ -112,6 +110,14 @@ const trainingModes = [
   },
 ]
 
+const topicIDMap: Record<string, string> = {
+  "DSA": "dsa",
+  "DBMS": "dbms",
+  "OS": "os",
+  "JAVASCRIPT": "javascript",
+  "APTITUDE": "aptitude"
+}
+
 export default function TrainPage() {
   const router = useRouter()
   const operationsRef = useRef<HTMLDivElement>(null)
@@ -127,19 +133,10 @@ export default function TrainPage() {
   const [aiCount, setAiCount] = useState<number>(5)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-  const [aiDebugInfo, setAiDebugInfo] = useState<{ isRealAI: boolean; provider: string } | null>(null)
+  const [aiDebugInfo] = useState<{ isRealAI: boolean; provider: string } | null>(null)
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
 
-  // Handle incoming mode from dashboard
-  useEffect(() => {
-    const mode = searchParams?.get('mode')
-    if (mode === 'adaptive' || mode === 'mistakes') {
-      // Auto-start an adaptive session
-      handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : "adaptive")
-    }
-  }, [searchParams])
-
-  const handleAdaptiveStart = async (mode: "adaptive" | "mistakes") => {
+  const handleAdaptiveStart = useCallback(async (mode: "adaptive" | "mistakes") => {
     setAiLoading(true)
     try {
       const res = await fetch(`${API_URL}/api/training/adaptive/start`, {
@@ -157,9 +154,9 @@ export default function TrainPage() {
     } finally {
       setAiLoading(false)
     }
-  }
+  }, [router, setAiLoading])
 
-  const handleGenerateAI = async () => {
+  const handleGenerateAI = useCallback(async () => {
     if (!aiTopic.trim()) {
       setAiError("DOMAIN SPECIFICATION REQUIRED");
       return;
@@ -233,7 +230,17 @@ export default function TrainPage() {
     } finally {
       setAiLoading(false);
     }
-  };
+  }, [aiTopic, aiDifficulty, aiCount, router, setAiError, setAiLoading]);
+
+  // Handle incoming mode from dashboard
+  useEffect(() => {
+    const mode = searchParams?.get('mode')
+    if (mode === 'adaptive' || mode === 'mistakes') {
+      // Auto-start an adaptive session
+      handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : "adaptive")
+    }
+  }, [searchParams, handleAdaptiveStart])
+
 
   // Auto-scroll logic and adaptive difficulty calculation
   useEffect(() => {
@@ -252,7 +259,7 @@ export default function TrainPage() {
     }
   }, [selectedTopic])
 
-  const handleStart = (modeOverride?: string) => {
+  const handleStart = useCallback((modeOverride?: string) => {
     const topic = selectedTopic
     const mode = modeOverride || selectedMode
 
@@ -273,24 +280,15 @@ export default function TrainPage() {
       return
     }
 
-    // Standardized Mapping: Ensure frontend IDs match backend combat arenas
-    const topicIDMap: Record<string, string> = {
-      "DSA": "dsa",
-      "DBMS": "dbms",
-      "OS": "os",
-      "JAVASCRIPT": "javascript",
-      "APTITUDE": "aptitude"
-    }
-
     const arenaId = topicIDMap[topic] || topic.toLowerCase().replace(/\s+/g, '_')
     console.log("[TrainHub] Session Starting:", { topic, arenaId, mode })
     router.push(`/train/play/${arenaId}?topic=${encodeURIComponent(topic)}&mode=${encodeURIComponent(mode)}&difficulty=${encodeURIComponent(adaptiveDifficulty)}`)
-  }
+  }, [selectedTopic, selectedMode, adaptiveDifficulty, router, handleAdaptiveStart, setShowSetup])
 
-  const handleInitialize = (quizId: string) => {
+  const handleInitialize = useCallback((quizId: string) => {
     if (!selectedTopic || !selectedMode) return
     router.push(`/train/play/${quizId}?topic=${encodeURIComponent(selectedTopic)}&mode=${encodeURIComponent(selectedMode)}&difficulty=${encodeURIComponent(adaptiveDifficulty)}`)
-  }
+  }, [selectedTopic, selectedMode, adaptiveDifficulty, router])
 
   return (
     <ProtectedRoute>
