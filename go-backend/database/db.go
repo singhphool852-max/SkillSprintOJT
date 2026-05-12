@@ -18,6 +18,16 @@ var DB *gorm.DB
 func ConnectDB() {
 	// Get MySQL DSN from environment
 	dsn := os.Getenv("MYSQL_DSN")
+ main
+	if dsn == "" {
+		dsn = os.Getenv("MYSQL_URL")
+	}
+	if dsn == "" {
+		dsn = os.Getenv("DATABASE_URL")
+	}
+
+
+ main
 	if dsn == "" {
 		log.Fatal("[DB] FATAL: MYSQL_DSN environment variable is not set. Please set MYSQL_DSN in your environment variables.")
 	}
