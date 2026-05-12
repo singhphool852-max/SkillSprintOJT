@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Menu, X, Zap, LogOut, User, ChevronDown, Shield } from "lucide-react"
+import { Menu, X, Zap, LogOut, User, ChevronDown, Shield, MessageCircle } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 
 const navLinks = [
@@ -11,6 +11,7 @@ const navLinks = [
   { href: "/arena", label: "ARENA" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/train", label: "TRAIN" },
+  { href: "/chat", label: "CHAT", icon: MessageCircle },
 ]
 
 export function Nav() {
@@ -54,6 +55,7 @@ export function Nav() {
         <div className="hidden items-center gap-0.5 md:flex">
           {navLinks.map((link) => {
             const isActive = pathname === link.href
+            const Icon = link.icon
             return (
               <Link
                 key={link.href}
@@ -62,7 +64,14 @@ export function Nav() {
                   isActive ? "text-neon-cyan bg-neon-cyan/5 border-neon-cyan/20" : "text-muted-foreground hover:text-neon-cyan"
                 }`}
               >
-                {link.label}
+                {Icon ? (
+                  <span className="flex items-center gap-1.5">
+                    <Icon className="h-3 w-3" />
+                    {link.label}
+                  </span>
+                ) : (
+                  link.label
+                )}
               </Link>
             )
           })}
@@ -164,16 +173,26 @@ export function Nav() {
       {open && (
         <div className="border-t border-panel-border bg-deep-bg/95 backdrop-blur-xl md:hidden">
           <div className="flex flex-col px-4 py-4 gap-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setOpen(false)}
-                className="px-4 py-3 font-mono text-xs tracking-widest text-muted-foreground transition-colors hover:text-neon-cyan"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const Icon = link.icon
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setOpen(false)}
+                  className="px-4 py-3 font-mono text-xs tracking-widest text-muted-foreground transition-colors hover:text-neon-cyan"
+                >
+                  {Icon ? (
+                    <span className="flex items-center gap-2">
+                      <Icon className="h-4 w-4" />
+                      {link.label}
+                    </span>
+                  ) : (
+                    link.label
+                  )}
+                </Link>
+              )
+            })}
             <div className="mt-3 flex flex-col gap-2 border-t border-panel-border pt-4">
               {!loading && user ? (
                 <>

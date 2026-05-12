@@ -24,6 +24,9 @@ node_modules/
 go-backend/server
 go-backend/backend
 
+# Uploads
+go-backend/uploads/
+
 # Logs and tests
 *.log
 test_notes.txt

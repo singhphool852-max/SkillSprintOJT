@@ -87,6 +87,7 @@ func MigrateModels() {
 		&models.Upload{},
 		&models.UserWrongQuestion{},
 		&models.UserTopicStats{},
+		&models.ChatMessage{},
 	)
 
 	if err != nil {
