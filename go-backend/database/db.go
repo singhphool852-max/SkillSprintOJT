@@ -25,6 +25,12 @@ func ConnectDB() {
 
 	// Fallback to a single DSN string if provided (convenient for some cloud providers)
 	dsn := os.Getenv("MYSQL_DSN")
+	if dsn == "" {
+		dsn = os.Getenv("MYSQL_URL")
+	}
+	if dsn == "" {
+		dsn = os.Getenv("DATABASE_URL")
+	}
 
 	if dsn == "" {
 		// Build DSN from individual components
