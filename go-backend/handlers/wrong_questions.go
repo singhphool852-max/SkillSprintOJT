@@ -54,8 +54,6 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 		return
 	}
 
-	var wrongQuestions []models.UserWrongQuestion
-
 	for _, q := range questions {
 		sub, submitted := subMap[q.ID]
 		verdict := "skipped"
