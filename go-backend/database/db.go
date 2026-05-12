@@ -116,6 +116,7 @@ func MigrateModels() {
 		&models.TestViolation{},
 		&models.UserWrongQuestion{},
 		&models.UserTopicStats{},
+		&models.ChatMessage{},
 	)
 	if err != nil {
 		log.Fatalf("[DB] FATAL: Activity migration failed: %v", err)

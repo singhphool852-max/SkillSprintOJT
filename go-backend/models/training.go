@@ -23,6 +23,8 @@ func (TrainingQuestion) TableName() string { return "training_questions" }
 type TrainingSession struct {
 	SessionID   string    `gorm:"type:varchar(191);primaryKey;column:session_id" json:"session_id"` // UUID
 	Topic       string    `gorm:"type:varchar(191);index;column:topic" json:"topic"`
+	SessionID   string    `gorm:"primaryKey;column:session_id;type:varchar(191)" json:"session_id"` // UUID
+	Topic       string    `gorm:"column:topic" json:"topic"`
 	QuestionIDs string    `gorm:"column:question_ids;type:text" json:"question_ids"` // JSON array e.g. [1,2,3]
 	Status      string    `gorm:"column:status" json:"status"`                       // pending | completed
 	Score       int       `gorm:"column:score" json:"score"`

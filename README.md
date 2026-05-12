@@ -15,6 +15,7 @@ The project is divided into two main components:
 - **Arenas & Quizzes**: Participate in live "Arenas" (timed competitive quizzes) or take practice tests across various topics and difficulty levels.
 - **Dynamic Questions**: Support for different question types including Multiple Choice Questions (MCQs) and subjective questions.
 - **Progress Tracking**: Track user attempts, scores, and training progress over time.
+- **Community Chat**: Real-time global chat room where users can send messages, share notes, images, and PDF files with each other. Features WebSocket-based instant messaging, file uploads, and persistent chat history.
 
 ## Tech Stack
 
@@ -83,3 +84,18 @@ This section outlines the progressive development of the SkillSprint platform ov
 - Conducting comprehensive testing across the full stack to ensure reliability.
 - Fixing bugs, optimizing database queries, and refining the user experience.
 - Preparing project documentation (including this README) and preparing for final evaluation.
+
+### Additional Features: Community Chat
+- Implemented real-time WebSocket-based chat system for global community communication.
+- Added support for text messages, formatted notes, image sharing (JPEG/PNG/GIF), and PDF file sharing.
+- Integrated file upload with validation (10MB limit, type checking, filename sanitization).
+- Built persistent chat history with database storage and auto-scroll functionality.
+- Designed responsive chat UI matching the SkillSprint cyberpunk theme.
+
+## Chat Feature Documentation
+
+For detailed information about the Community Chat feature, see:
+- **[CHAT_FEATURE.md](CHAT_FEATURE.md)** - Complete feature documentation
+- **[QUICK_START_CHAT.md](QUICK_START_CHAT.md)** - Quick start guide
+- **[CHAT_ARCHITECTURE.md](CHAT_ARCHITECTURE.md)** - Architecture and data flow
+- **[CHAT_TESTING_GUIDE.md](CHAT_TESTING_GUIDE.md)** - Testing checklist
