@@ -54,8 +54,13 @@ func CreateTopic(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&topic).Error; err != nil {
+ main
 		log.Printf("[TOPIC ERROR] %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+		log.Printf("[TOPIC] Failed to create topic: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create topic: " + err.Error()})
+ main
 		return
 	}
 
@@ -68,7 +73,8 @@ func CreateTopic(c *gin.Context) {
 func ListTopics(c *gin.Context) {
 	var topics []models.Topic
 	if err := database.DB.Preload("Creator").Order("createdAt desc").Find(&topics).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch topics"})
+		log.Printf("[TOPIC] Failed to fetch topics: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch topics: " + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, topics)
