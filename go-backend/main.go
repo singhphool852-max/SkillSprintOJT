@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"backend/arena"
+	"backend/chat"
 	"backend/database"
 	"backend/handlers"
 	"backend/leaderboard"
@@ -42,6 +43,11 @@ func main() {
 	arenaHub := arena.NewSessionHub()
 	handlers.ArenaSessionHub = arenaHub
 
+	// Start chat WebSocket hub
+	chatHub := chat.NewHub()
+	handlers.ChatHub = chatHub
+	go chatHub.Run()
+
 	// Start background auto-submit watcher for expired attempts
 	handlers.StartAutoSubmitWatcher()
 
@@ -49,12 +55,16 @@ func main() {
 
 	// Setup Robust CORS to allow Next.js communication
 	config := cors.Config{
+		AllowOrigins: []string{
+			"http://localhost:3000",
+			"https://main.dbpan1tvwu74i.amplifyapp.com",
+			"https://skillsprintojt.onrender.com",
+		},
 		AllowOriginFunc: func(origin string) bool {
 			// Allow localhost, Vercel, and Amplify domains
 			return origin == "http://localhost:3000" || 
 				   strings.HasSuffix(origin, ".vercel.app") || 
-				   strings.HasSuffix(origin, ".amplifyapp.com") ||
-				   origin == "https://skillsprintojt.onrender.com"
+				   strings.HasSuffix(origin, ".amplifyapp.com")
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
@@ -224,6 +234,14 @@ func main() {
 	// WebSocket route (outside /api — no JSON middleware needed)
 	r.GET("/ws/leaderboard/:testId", handlers.LeaderboardWS)
 	r.GET("/ws/arena/:attemptId", handlers.ArenaSessionWS)
+	r.GET("/ws/chat", middleware.JWTMiddleware(), handlers.ChatWebSocket)
+
+	// Chat Routes
+	api.POST("/chat/upload", middleware.JWTMiddleware(), handlers.UploadChatFile)
+	api.GET("/chat/history", middleware.JWTMiddleware(), handlers.GetChatHistory)
+
+	// Serve uploaded chat files statically
+	r.Static("/uploads/chat", "./uploads/chat")
 
 	port := os.Getenv("PORT")
 	if port == "" {
