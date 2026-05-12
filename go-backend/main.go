@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"backend/arena"
-	"backend/chat"
-	"backend/database"
-	"backend/handlers"
-	"backend/leaderboard"
-	"backend/middleware"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/arena"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/chat"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/handlers"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/leaderboard"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -28,10 +28,10 @@ func main() {
 
 	// Validate critical environment variables
 	log.Println("[ENV] Validating environment variables...")
-	if os.Getenv("MYSQL_DSN") == "" {
-		log.Fatal("[ENV] FATAL: MYSQL_DSN is required. Format: username:password@tcp(host:port)/database?charset=utf8mb4&parseTime=True&loc=Local")
+	if os.Getenv("MYSQL_DSN") == "" && os.Getenv("MYSQL_URL") == "" && os.Getenv("DATABASE_URL") == "" {
+		log.Fatal("[ENV] FATAL: Database connection string required. Set MYSQL_DSN, MYSQL_URL, or DATABASE_URL.")
 	}
-	log.Println("[ENV] ✓ MYSQL_DSN is set")
+	log.Println("[ENV] ✓ Database connection string found")
 
 	database.ConnectDB()
 

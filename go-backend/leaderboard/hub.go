@@ -1,7 +1,7 @@
 package leaderboard
 
 import (
-	"backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
 	"encoding/json"
 	"log"
 	"sync"

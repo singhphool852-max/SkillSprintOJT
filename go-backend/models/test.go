@@ -8,21 +8,36 @@ import (
 // Test — a timed assessment created by an admin
 // ──────────────────────────────────────────────
 type Test struct {
+ main
+	ID              string     `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	Title           string     `gorm:"column:title" json:"title"`
+	Description     string     `gorm:"column:description" json:"description"`
+	TopicID         string     `gorm:"type:varchar(191);index;column:topicId" json:"topicId,omitempty"`
+
 	ID              string     `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	Title           string     `gorm:"column:title" json:"title"`
 	Description     string     `gorm:"column:description" json:"description"`
 	TopicID         string     `gorm:"column:topicId;type:varchar(191)" json:"topicId,omitempty"`
+main
 	StartTime       time.Time  `gorm:"column:startTime" json:"startTime"`
 	DurationSeconds int        `gorm:"column:durationSeconds" json:"durationSeconds"`
 	Difficulty      string     `gorm:"column:difficulty" json:"difficulty"` // "easy", "medium", "hard"
 	MaxScore        int        `gorm:"column:maxScore" json:"maxScore"`
 	IsPublished     bool       `gorm:"column:isPublished;default:false" json:"isPublished"`
 	IsActive        bool       `gorm:"column:isActive;default:false" json:"isActive"`
+main
+	CreatedBy       string     `gorm:"type:varchar(191);index;column:createdBy" json:"createdBy"`
+	CreatedAt       time.Time  `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt       time.Time  `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+	DeletedAt       *time.Time `gorm:"column:deletedAt;index" json:"deletedAt,omitempty"`
+	DeletedBy       string     `gorm:"type:varchar(191);column:deletedBy" json:"deletedBy,omitempty"`
+
 	CreatedBy       string     `gorm:"column:createdBy;type:varchar(191)" json:"createdBy"`
 	CreatedAt       time.Time  `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 	UpdatedAt       time.Time  `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 	DeletedAt       *time.Time `gorm:"column:deletedAt;index" json:"deletedAt,omitempty"`
 	DeletedBy       string     `gorm:"column:deletedBy;type:varchar(191)" json:"deletedBy,omitempty"`
+main
 
 	Creator   User           `gorm:"-" json:"creator,omitempty"`
 	Topic     *Topic         `gorm:"-" json:"topic,omitempty"`
@@ -37,6 +52,8 @@ func (Test) TableName() string {
 // TestQuestion — one question inside a test
 // ──────────────────────────────────────────────
 type TestQuestion struct {
+	ID          string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	TestID      string    `gorm:"type:varchar(191);index;column:testId" json:"testId"`
 	ID          string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	TestID      string    `gorm:"column:testId;type:varchar(191)" json:"testId"`
 	Type        string    `gorm:"column:type" json:"type"` // "mcq" or "coding"
@@ -61,6 +78,8 @@ func (TestQuestion) TableName() string {
 // TestMCQOption — one option for an MCQ question
 // ──────────────────────────────────────────────
 type TestMCQOption struct {
+	ID         string `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	QuestionID string `gorm:"type:varchar(191);index;column:questionId" json:"questionId"`
 	ID         string `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	QuestionID string `gorm:"column:questionId;type:varchar(191)" json:"questionId"`
 	OptionText string `gorm:"column:optionText" json:"optionText"`
@@ -75,6 +94,8 @@ func (TestMCQOption) TableName() string {
 // TestCodingDetail — metadata for a coding question
 // ──────────────────────────────────────────────
 type TestCodingDetail struct {
+	ID          string `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	QuestionID  string `gorm:"type:varchar(191);unique;index;column:questionId" json:"questionId"`
 	ID          string `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	QuestionID  string `gorm:"unique;column:questionId;type:varchar(191)" json:"questionId"`
 	Constraints string `gorm:"column:constraints" json:"constraints"`
@@ -90,6 +111,8 @@ func (TestCodingDetail) TableName() string {
 // TestCase — input/output pair for code evaluation
 // ──────────────────────────────────────────────
 type TestCase struct {
+	ID             string `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	QuestionID     string `gorm:"type:varchar(191);index;column:questionId" json:"questionId"`
 	ID             string `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	QuestionID     string `gorm:"column:questionId;type:varchar(191)" json:"questionId"`
 	Input          string `gorm:"column:input" json:"input"`
@@ -105,6 +128,9 @@ func (TestCase) TableName() string {
 // TestAttempt — a user's attempt at a test
 // ──────────────────────────────────────────────
 type TestAttempt struct {
+	ID              string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID          string    `gorm:"type:varchar(191);uniqueIndex:idx_user_test;column:userId" json:"userId"`
+	TestID          string    `gorm:"type:varchar(191);uniqueIndex:idx_user_test;column:testId" json:"testId"`
 	ID              string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	UserID          string    `gorm:"column:userId;type:varchar(191);uniqueIndex:idx_user_test" json:"userId"`
 	TestID          string    `gorm:"column:testId;type:varchar(191);uniqueIndex:idx_user_test" json:"testId"`
@@ -130,6 +156,11 @@ func (TestAttempt) TableName() string {
 // TestSubmission — answer to one question within an attempt
 // ──────────────────────────────────────────────
 type TestSubmission struct {
+	ID               string `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	AttemptID        string `gorm:"type:varchar(191);index;column:attemptId" json:"attemptId"`
+	QuestionID       string `gorm:"type:varchar(191);index;column:questionId" json:"questionId"`
+	Type             string `gorm:"column:type" json:"type"` // "mcq" or "coding"
+	SelectedOptionID string `gorm:"type:varchar(191);index;column:selectedOptionId" json:"selectedOptionId"`
 	ID               string `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	AttemptID        string `gorm:"column:attemptId;type:varchar(191)" json:"attemptId"`
 	QuestionID       string `gorm:"column:questionId;type:varchar(191)" json:"questionId"`
@@ -154,6 +185,10 @@ func (TestSubmission) TableName() string {
 // TestResult — persisted result summary after grading
 // ──────────────────────────────────────────────
 type TestResult struct {
+	ID              string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	AttemptID       string    `gorm:"type:varchar(191);unique;index;column:attemptId" json:"attemptId"`
+	UserID          string    `gorm:"type:varchar(191);index;column:userId" json:"userId"`
+	TestID          string    `gorm:"type:varchar(191);index;column:testId" json:"testId"`
 	ID              string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	AttemptID       string    `gorm:"unique;column:attemptId;type:varchar(191)" json:"attemptId"`
 	UserID          string    `gorm:"column:userId;type:varchar(191)" json:"userId"`
@@ -182,6 +217,10 @@ func (TestResult) TableName() string {
 // TestViolation — anti-cheat violation log entry
 // ──────────────────────────────────────────────
 type TestViolation struct {
+	ID            string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	AttemptID     string    `gorm:"type:varchar(191);column:attemptId;index" json:"attemptId"`
+	UserID        string    `gorm:"type:varchar(191);index;column:userId" json:"userId"`
+	TestID        string    `gorm:"type:varchar(191);index;column:testId" json:"testId"`
 	ID            string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	AttemptID     string    `gorm:"column:attemptId;type:varchar(191);index" json:"attemptId"`
 	UserID        string    `gorm:"column:userId;type:varchar(191)" json:"userId"`

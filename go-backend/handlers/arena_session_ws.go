@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"backend/arena"
-	"backend/database"
-	"backend/middleware"
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/arena"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/middleware"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"log"
 	"net/http"
 	"time"

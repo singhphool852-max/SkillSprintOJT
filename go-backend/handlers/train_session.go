@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"backend/database"
-	"backend/models"
-	"backend/services"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/services"
 	"encoding/json"
 	"errors"
 	"log"
