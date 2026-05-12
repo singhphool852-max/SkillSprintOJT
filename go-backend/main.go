@@ -25,6 +25,13 @@ func main() {
 		log.Println("[ENV] Successfully loaded configuration from .env")
 	}
 
+	// Validate critical environment variables
+	log.Println("[ENV] Validating environment variables...")
+	if os.Getenv("MYSQL_DSN") == "" {
+		log.Fatal("[ENV] FATAL: MYSQL_DSN is required. Format: username:password@tcp(host:port)/database?charset=utf8mb4&parseTime=True&loc=Local")
+	}
+	log.Println("[ENV] ✓ MYSQL_DSN is set")
+
 	database.ConnectDB()
 
 	// Start leaderboard WebSocket hub
