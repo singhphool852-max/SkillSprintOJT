@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"backend/leaderboard"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/leaderboard"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

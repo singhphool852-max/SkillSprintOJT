@@ -1,10 +1,9 @@
 package handlers
 
 import (
-	"backend/database"
-	"backend/judge"
-	"backend/models"
-	"fmt"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/judge"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"log"
 	"math"
 	"net/http"
@@ -137,8 +136,7 @@ func JoinTest(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&attempt).Error; err != nil {
-		log.Printf("[JOIN ERROR] Failed to create test attempt: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to join test: %v", err)})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to join test"})
 		return
 	}
 

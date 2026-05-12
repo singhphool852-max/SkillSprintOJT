@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

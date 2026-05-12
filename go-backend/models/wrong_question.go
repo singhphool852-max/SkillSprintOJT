@@ -9,6 +9,12 @@ import (
 // from arena tests. Foundation for personalized training.
 // ──────────────────────────────────────────────
 type UserWrongQuestion struct {
+	ID             string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID         string    `gorm:"type:varchar(191);uniqueIndex:idx_user_question;column:userId" json:"userId"`
+	AttemptID      string    `gorm:"type:varchar(191);index;column:attemptId" json:"attemptId"`
+	QuestionID     string    `gorm:"type:varchar(191);uniqueIndex:idx_user_question;column:questionId" json:"questionId"`
+	TestID         string    `gorm:"type:varchar(191);index;column:testId" json:"testId"`
+	TopicID        string    `gorm:"type:varchar(191);index;column:topicId" json:"topicId"`
 	ID             string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	UserID         string    `gorm:"column:userId;type:varchar(191);uniqueIndex:idx_user_question" json:"userId"`
 	AttemptID      string    `gorm:"column:attemptId;type:varchar(191)" json:"attemptId"`
@@ -44,6 +50,9 @@ func (UserWrongQuestion) TableName() string {
 // per user. Updated after each test submission.
 // ──────────────────────────────────────────────
 type UserTopicStats struct {
+	ID              string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID          string    `gorm:"type:varchar(191);uniqueIndex:idx_user_topic_stats;column:userId" json:"userId"`
+	TopicID         string    `gorm:"type:varchar(191);uniqueIndex:idx_user_topic_stats;column:topicId" json:"topicId"`
 	ID              string    `gorm:"primaryKey;column:id;type:varchar(191)" json:"id"`
 	UserID          string    `gorm:"column:userId;type:varchar(191);uniqueIndex:idx_user_topic_stats" json:"userId"`
 	TopicID         string    `gorm:"column:topicId;type:varchar(191);uniqueIndex:idx_user_topic_stats" json:"topicId"`
@@ -57,6 +66,8 @@ type UserTopicStats struct {
 	LastAttemptedAt time.Time `gorm:"column:lastAttemptedAt" json:"lastAttemptedAt"`
 	UpdatedAt       time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
+	User  User   `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	Topic *Topic `gorm:"foreignKey:TopicID;constraint:OnDelete:CASCADE" json:"topic,omitempty"`
 	User  User   `gorm:"-" json:"user,omitempty"`
 	Topic *Topic `gorm:"-" json:"topic,omitempty"`
 }

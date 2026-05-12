@@ -1,8 +1,11 @@
 package chat
 
 import (
+ main
+
 	"backend/database"
 	"backend/models"
+ main
 	"encoding/json"
 	"log"
 	"sync"
@@ -10,6 +13,30 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+main
+// Message represents a chat message exchanged between users.
+type Message struct {
+	ID        string `json:"id"`
+	UserID    string `json:"userId"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
+	Content   string `json:"content"`
+	Type      string `json:"type"` // "text", "file", "system"
+	FileURL   string `json:"fileUrl,omitempty"`
+	Timestamp string `json:"timestamp"`
+}
+
+// Client represents a single WebSocket chat connection.
+type Client struct {
+	Hub      *Hub
+	Conn     *websocket.Conn
+	Send     chan []byte
+	UserID   string
+	Username string
+}
+
+// Hub manages all connected chat clients and message broadcasting.
 
 // Client represents a connected WebSocket client
 type Client struct {
@@ -22,12 +49,19 @@ type Client struct {
 }
 
 // Hub manages all chat clients and message broadcasting
+ main
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*Client]bool
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
+ main
+	history    []Message // In-memory recent message history
+}
+
+// NewHub creates a new chat hub.
+
 }
 
 // ChatEvent represents a chat message or system event
@@ -44,22 +78,45 @@ type ChatEvent struct {
 }
 
 // NewHub creates a new chat hub
+main
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+main
+		history:    make([]Message, 0),
+	}
+}
+
+// Run starts the hub's event loop. Should be called as a goroutine.
 	}
 }
 
 // Run starts the hub's main event loop
+main
 func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
+main
+			h.mu.Unlock()
+			log.Printf("[CHAT] Client connected: %s (%s)", client.Username, client.UserID)
+
+			// Send recent history to newly connected client
+			h.mu.RLock()
+			for _, msg := range h.history {
+				data, _ := json.Marshal(msg)
+				select {
+				case client.Send <- data:
+				default:
+				}
+			}
+			h.mu.RUnlock()
+
 			count := len(h.clients)
 			h.mu.Unlock()
 
@@ -75,11 +132,37 @@ func (h *Hub) Run() {
 			h.broadcastEvent(joinEvent)
 
 			log.Printf("[CHAT] User joined: %s (%s), online: %d", client.username, client.userID, count)
+main
 
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+ main
+				close(client.Send)
+			}
+			h.mu.Unlock()
+			log.Printf("[CHAT] Client disconnected: %s", client.Username)
+
+		case message := <-h.broadcast:
+			// Store in history (keep last 100 messages)
+			var msg Message
+			if err := json.Unmarshal(message, &msg); err == nil {
+				h.mu.Lock()
+				h.history = append(h.history, msg)
+				if len(h.history) > 100 {
+					h.history = h.history[len(h.history)-100:]
+				}
+				h.mu.Unlock()
+			}
+
+			h.mu.RLock()
+			for client := range h.clients {
+				select {
+				case client.Send <- message:
+				default:
+					close(client.Send)
+
 				close(client.send)
 			}
 			count := len(h.clients)
@@ -128,6 +211,7 @@ func (h *Hub) Run() {
 				default:
 					// Client's send buffer is full, disconnect them
 					close(client.send)
+ main
 					delete(h.clients, client)
 				}
 			}
@@ -135,6 +219,43 @@ func (h *Hub) Run() {
 		}
 	}
 }
+
+ main
+// Register adds a client to the hub.
+func (h *Hub) Register(client *Client) {
+	h.register <- client
+}
+
+// Unregister removes a client from the hub.
+func (h *Hub) Unregister(client *Client) {
+	h.unregister <- client
+}
+
+// Broadcast sends a message to all connected clients.
+func (h *Hub) Broadcast(message []byte) {
+	h.broadcast <- message
+}
+
+// GetHistory returns the recent chat history.
+func (h *Hub) GetHistory() []Message {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	result := make([]Message, len(h.history))
+	copy(result, h.history)
+	return result
+}
+
+// ReadPump reads messages from the WebSocket connection and broadcasts them.
+func (c *Client) ReadPump() {
+	defer func() {
+		c.Hub.Unregister(c)
+		c.Conn.Close()
+	}()
+
+	c.Conn.SetReadLimit(4096)
+	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.Conn.SetPongHandler(func(string) error {
+		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 
 // broadcastEvent sends an event to all connected clients
 func (h *Hub) broadcastEvent(event ChatEvent) {
@@ -163,10 +284,40 @@ func (c *Client) readPump() {
 	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.conn.SetPongHandler(func(string) error {
 		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+ main
 		return nil
 	})
 
 	for {
+main
+		_, message, err := c.Conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		// Parse incoming, enrich with server timestamp
+		var msg Message
+		if err := json.Unmarshal(message, &msg); err != nil {
+			continue
+		}
+		msg.UserID = c.UserID
+		msg.Username = c.Username
+		if msg.Timestamp == "" {
+			msg.Timestamp = time.Now().Format(time.RFC3339)
+		}
+
+		enriched, _ := json.Marshal(msg)
+		c.Hub.Broadcast(enriched)
+	}
+}
+
+// WritePump sends messages from the hub to the WebSocket connection.
+func (c *Client) WritePump() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer func() {
+		ticker.Stop()
+		c.Conn.Close()
+
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -208,10 +359,20 @@ func (c *Client) writePump() {
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
+main
 	}()
 
 	for {
 		select {
+main
+		case message, ok := <-c.Send:
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if !ok {
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
@@ -221,17 +382,25 @@ func (c *Client) writePump() {
 			}
 
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+main
 				return
 			}
 
 		case <-ticker.C:
+ main
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+ main
 				return
 			}
 		}
 	}
 }
+ main
+
 
 // ServeWS handles WebSocket requests from clients
 func (h *Hub) ServeWS(conn *websocket.Conn, userID, username, avatar string) {
@@ -250,3 +419,4 @@ func (h *Hub) ServeWS(conn *websocket.Conn, userID, username, avatar string) {
 	go client.writePump()
 	go client.readPump()
 }
+ main

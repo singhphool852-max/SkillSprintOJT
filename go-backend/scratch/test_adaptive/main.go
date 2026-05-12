@@ -1,8 +1,8 @@
 package main
 
 import (
-	"backend/database"
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"fmt"
 	"log"
 
@@ -23,7 +23,7 @@ func main() {
 		log.Fatal("No users found in database")
 	}
 
-	fmt.Printf("Analyzing Adaptive Training for User: %s (%s)\n", user.Name, user.ID)
+	fmt.Printf("Analyzing Adaptive Training for User: %s (%s)\n", user.Username, user.ID)
 
 	// 2. Fetch mistakes (highest wrong count first)
 	var mistakes []models.UserWrongQuestion
