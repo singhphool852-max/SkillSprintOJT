@@ -1,7 +1,6 @@
 package database
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -15,16 +14,11 @@ import (
 
 var DB *gorm.DB
 
-// ConnectDB initializes the MySQL connection using environment variables.
+// ConnectDB initializes the MySQL connection using MYSQL_DSN environment variable.
 func ConnectDB() {
-	user := os.Getenv("DB_USER")
-	pass := os.Getenv("DB_PASSWORD")
-	host := os.Getenv("DB_HOST")
-	port := os.Getenv("DB_PORT")
-	name := os.Getenv("DB_NAME")
-
-	// Fallback to a single DSN string if provided (convenient for some cloud providers)
+	// Get MySQL DSN from environment
 	dsn := os.Getenv("MYSQL_DSN")
+ main
 	if dsn == "" {
 		dsn = os.Getenv("MYSQL_URL")
 	}
@@ -32,20 +26,14 @@ func ConnectDB() {
 		dsn = os.Getenv("DATABASE_URL")
 	}
 
+
+ main
 	if dsn == "" {
-		// Build DSN from individual components
-		// Example: user:pass@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True&loc=Local
-		if user == "" || host == "" || name == "" {
-			log.Fatal("[DB] Critical environment variables missing (DB_USER, DB_HOST, DB_NAME)")
-		}
-		if port == "" {
-			port = "3306"
-		}
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", 
-			user, pass, host, port, name)
+		log.Fatal("[DB] FATAL: MYSQL_DSN environment variable is not set. Please set MYSQL_DSN in your environment variables.")
 	}
 
-	log.Printf("[DB] Connecting to MySQL at %s:%s/%s...", host, port, name)
+	log.Println("[DB] MYSQL_DSN found, connecting to MySQL...")
+	log.Printf("[DB] DSN format check: %d characters", len(dsn))
 
 	// Open connection with detailed logging in development
 	database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
