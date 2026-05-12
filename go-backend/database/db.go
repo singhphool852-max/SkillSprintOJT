@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 
 	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"

@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"backend/database"
-	"backend/middleware"
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/middleware"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"

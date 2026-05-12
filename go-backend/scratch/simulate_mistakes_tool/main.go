@@ -1,10 +1,9 @@
 package main
 
 import (
-	"backend/database"
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,10 +22,10 @@ func main() {
 	result := database.DB.Where("email = ?", "test_student@skillsprint.com").First(&user)
 	if result.Error != nil {
 		user = models.User{
-			ID:    uuid.New().String(),
-			Name:  "Test Student",
-			Email: "test_student@skillsprint.com",
-			Role:  "student",
+			ID:       uuid.New().String(),
+			Username: "Test Student",
+			Email:    "test_student@skillsprint.com",
+			Role:     "student",
 		}
 		database.DB.Create(&user)
 		fmt.Printf("Created test user: %s\n", user.Email)
@@ -44,7 +43,7 @@ func main() {
 	testID := uuid.New().String()
 	questionID := uuid.New().String()
 
-	fmt.Printf("Simulating mistake for User: %s in Topic: %s\n", user.Name, topic.Name)
+	fmt.Printf("Simulating mistake for User: %s in Topic: %s\n", user.Username, topic.Name)
 
 	// 4. Record a Wrong Question (Upsert Logic)
 	mistake := models.UserWrongQuestion{

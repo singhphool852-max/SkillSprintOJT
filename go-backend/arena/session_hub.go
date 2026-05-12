@@ -1,8 +1,8 @@
 package arena
 
 import (
-	"backend/database"
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"encoding/json"
 	"log"
 	"sync"

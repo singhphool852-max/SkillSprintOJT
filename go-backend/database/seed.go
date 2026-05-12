@@ -1,7 +1,7 @@
 package database
 
 import (
-	"backend/models"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"log"
 	"time"
 
