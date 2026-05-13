@@ -118,10 +118,16 @@ export function useAntiCheat({
     if (!enabled) return
 
     const handleFullscreenChange = () => {
+      console.log('[AntiCheat] Fullscreen change detected, fullscreenElement:', !!document.fullscreenElement)
+      
       if (!document.fullscreenElement && isArmedRef.current) {
+        // Exited fullscreen - show warning
+        console.log('[AntiCheat] Exited fullscreen - showing warning')
         addViolation("fullscreen_exit")
         setShowFullscreenWarning(true)
       } else if (document.fullscreenElement) {
+        // Entered fullscreen - hide warning
+        console.log('[AntiCheat] Entered fullscreen - hiding warning')
         setShowFullscreenWarning(false)
       }
     }
