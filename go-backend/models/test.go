@@ -105,12 +105,12 @@ func (TestCase) TableName() string {
 // TestAttempt — a user's attempt at a test
 // ──────────────────────────────────────────────
 type TestAttempt struct {
-	ID              string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
-	UserID          string    `gorm:"type:varchar(191);uniqueIndex:idx_user_test;column:userId" json:"userId"`
-	TestID          string    `gorm:"type:varchar(191);uniqueIndex:idx_user_test;column:testId" json:"testId"`
-	Mode            string    `gorm:"column:mode;default:arena" json:"mode"` // "arena" (ranked, single) | "practice" | "train"
-	StartedAt       time.Time `gorm:"column:startedAt" json:"startedAt"`
-	SubmittedAt     time.Time `gorm:"column:submittedAt" json:"submittedAt"`
+	ID              string     `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID          string     `gorm:"type:varchar(191);uniqueIndex:idx_user_test;column:userId" json:"userId"`
+	TestID          string     `gorm:"type:varchar(191);uniqueIndex:idx_user_test;column:testId" json:"testId"`
+	Mode            string     `gorm:"column:mode;default:arena" json:"mode"` // "arena" (ranked, single) | "practice" | "train"
+	StartedAt       time.Time  `gorm:"column:startedAt" json:"startedAt"`
+	SubmittedAt     *time.Time `gorm:"column:submittedAt" json:"submittedAt"`
 	Score           int       `gorm:"column:score" json:"score"`
 	TotalQuestions  int       `gorm:"column:totalQuestions" json:"totalQuestions"`
 	TimeTaken       int       `gorm:"column:timeTaken" json:"timeTaken"` // seconds

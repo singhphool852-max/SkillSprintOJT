@@ -36,7 +36,7 @@ func LogViolation(c *gin.Context) {
 		return
 	}
 
-	if !attempt.SubmittedAt.IsZero() {
+	if attempt.SubmittedAt != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Attempt already submitted"})
 		return
 	}

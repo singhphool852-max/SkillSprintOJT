@@ -120,7 +120,7 @@ func ArenaSessionWS(c *gin.Context) {
 	}
 
 	// Check if already submitted
-	if !attempt.SubmittedAt.IsZero() {
+	if attempt.SubmittedAt != nil {
 		ArenaSessionHub.SendEvent(attemptID, "session_ended", map[string]interface{}{
 			"attemptId": attemptID,
 			"message":   "Test already submitted",
