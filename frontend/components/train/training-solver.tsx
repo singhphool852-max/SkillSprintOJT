@@ -106,14 +106,14 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
     // 3. Check if this is a DB-backed training question (from POST /api/train/session)
     //    These have _answer metadata embedded by the play page mapper
     const dbAnswer = (currentQuestion as any)._answer
-    if (dbAnswer !== undefined) {
+    if (dbAnswer !== undefined && isMCQ) {
       // Helper: normalize answer text for reliable comparison
       const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 
       let isCorrect = false
       let correctOptionId: string | undefined
 
-      if (isMCQ && currentQuestion.options) {
+      if (currentQuestion.options) {
         // userAnswer is the option ID (e.g. "OPT_13_2")
         // dbAnswer is the option text (e.g. "3NF")
         const selectedOpt = currentQuestion.options.find((o: any) => o.id === userAnswer)
@@ -139,16 +139,6 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
         console.log("[Verify] question id:", currentQuestion.id)
         console.log("[Verify] raw user answer:", selectedText)
         console.log("[Verify] raw correct answer:", dbAnswer)
-        console.log("[Verify] result:", isCorrect ? "CORRECT" : "INCORRECT")
-      } else {
-        // For non-MCQ, do a basic normalized comparison
-        const normUser = normalize(userAnswer)
-        const normCorrect = normalize(dbAnswer)
-        isCorrect = normUser === normCorrect || 
-                    (normUser.length > 5 && normCorrect.length > 5 && 
-                     (normUser.includes(normCorrect) || normCorrect.includes(normUser.substring(0, 30))))
-
-        console.log("[Verify] question id:", currentQuestion.id)
         console.log("[Verify] result:", isCorrect ? "CORRECT" : "INCORRECT")
       }
 
@@ -385,7 +375,7 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
             </div>
             <div className="flex flex-col">
               <span className="font-mono text-[10px] tracking-[0.2em] text-neon-cyan uppercase leading-tight">
-                {topic} // PRACTICE SESSION
+                {topic} // {viewingSummary ? "SESSION SYNOPSIS" : "PRACTICE SESSION"}
               </span>
               <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-widest">
                 {mode.replace('_', ' ')} — {difficulty}
@@ -393,28 +383,30 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-              <Target className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-mono text-xs text-foreground uppercase tracking-tighter">
-                QUESTION {currentQ + 1} <span className="text-muted-foreground">OF</span> {initialQuestions.length}
-              </span>
+          {!viewingSummary && (
+            <div className="flex items-center gap-8">
+              <div className="flex items-center gap-2">
+                <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-mono text-xs text-foreground uppercase tracking-tighter">
+                  QUESTION {currentQ + 1} <span className="text-muted-foreground">OF</span> {initialQuestions.length}
+                </span>
+              </div>
+              
+              <div className={`flex items-center gap-3 px-4 py-2 border ${timeLeft < 10 ? 'border-neon-pink/40 bg-neon-pink/5' : 'border-panel-border'}`}>
+                 <Clock className={`h-4 w-4 ${timeLeft < 10 ? 'text-neon-pink animate-pulse' : 'text-muted-foreground'}`} />
+                 <span className={`font-mono text-sm font-bold ${timeLeft < 10 ? 'text-neon-pink' : 'text-foreground'}`}>
+                   {timeLeft < 10 ? `0:0${timeLeft}` : `0:${timeLeft}`}
+                 </span>
+              </div>
             </div>
-            
-            <div className={`flex items-center gap-3 px-4 py-2 border ${timeLeft < 10 ? 'border-neon-pink/40 bg-neon-pink/5' : 'border-panel-border'}`}>
-               <Clock className={`h-4 w-4 ${timeLeft < 10 ? 'text-neon-pink animate-pulse' : 'text-muted-foreground'}`} />
-               <span className={`font-mono text-sm font-bold ${timeLeft < 10 ? 'text-neon-pink' : 'text-foreground'}`}>
-                 {timeLeft < 10 ? `0:0${timeLeft}` : `0:${timeLeft}`}
-               </span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Global Progress Bar */}
         <div className="h-[2px] bg-panel-border overflow-hidden">
           <div 
             className="h-full bg-neon-cyan transition-all duration-1000 ease-out shadow-[0_0_10px_#00e5ff]"
-            style={{ width: `${progressPercent}%` }}
+            style={{ width: `${viewingSummary ? 0 : progressPercent}%` }}
           />
         </div>
       </div>
