@@ -66,10 +66,16 @@ export function useChat(token: string | null) {
       try {
         const msg = JSON.parse(event.data)
         console.log('[CHAT] Message received:', msg)
+        console.log('[CHAT] Message type:', msg.type)
+        console.log('[CHAT] Current messages array length:', messages.length)
         
         if (msg.type === 'message') {
           console.log('[CHAT] Adding message to state:', msg)
-          setMessages((prev) => [...prev, msg])
+          setMessages((prev) => {
+            const newMessages = [...prev, msg]
+            console.log('[CHAT] New messages array length:', newMessages.length)
+            return newMessages
+          })
         }
         if (msg.type === 'online_count') {
           console.log('[CHAT] Updating online count:', msg.online_count)

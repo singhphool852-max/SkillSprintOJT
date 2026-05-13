@@ -133,6 +133,12 @@ export default function ChatPage() {
             <p>Connected: {isConnected ? 'YES' : 'NO'}</p>
             <p>Messages count: {messages.length}</p>
             <p>Online count: {onlineCount}</p>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-neon-cyan">Show raw messages</summary>
+              <pre className="mt-2 max-h-40 overflow-auto text-[10px]">
+                {JSON.stringify(messages, null, 2)}
+              </pre>
+            </details>
           </div>
 
           {messages.length === 0 && (
@@ -150,7 +156,8 @@ export default function ChatPage() {
 
             console.log('[CHAT PAGE] isSystemMessage:', isSystemMessage, 'type:', msg.type)
 
-            if (isSystemMessage) return null
+            // Temporarily show ALL messages for debugging
+            // if (isSystemMessage) return null
 
             return (
               <div
