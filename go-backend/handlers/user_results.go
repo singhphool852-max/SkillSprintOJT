@@ -80,7 +80,7 @@ func GetTestResult(c *gin.Context) {
 	// Calculate rank among submitted attempts for this test
 	var rank int64
 	database.DB.Model(&models.TestAttempt{}).
-		Where("testId = ? AND submittedAt IS NOT NULL AND submittedAt != '' AND score > ?", attempt.TestID, attempt.Score).
+		Where("testId = ? AND submittedAt IS NOT NULL AND score > ?", attempt.TestID, attempt.Score).
 		Count(&rank)
 
 	result = models.TestResult{
@@ -113,7 +113,7 @@ func ListUserResults(c *gin.Context) {
 
 	// First, compute results for any submitted attempts that don't have one yet
 	var unprocessedAttempts []models.TestAttempt
-	database.DB.Where("userId = ? AND submittedAt IS NOT NULL AND submittedAt != ''", userID).Find(&unprocessedAttempts)
+	database.DB.Where("userId = ? AND submittedAt IS NOT NULL", userID).Find(&unprocessedAttempts)
 
 	for _, attempt := range unprocessedAttempts {
 		var existingResult models.TestResult
@@ -172,7 +172,7 @@ func computeAndSaveResult(attempt models.TestAttempt) {
 
 	var rank int64
 	database.DB.Model(&models.TestAttempt{}).
-		Where("testId = ? AND submittedAt IS NOT NULL AND submittedAt != '' AND score > ?", attempt.TestID, attempt.Score).
+		Where("testId = ? AND submittedAt IS NOT NULL AND score > ?", attempt.TestID, attempt.Score).
 		Count(&rank)
 
 	result := models.TestResult{

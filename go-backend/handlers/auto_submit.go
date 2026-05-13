@@ -165,7 +165,7 @@ func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
 	freshAttempt.Score = totalScore
 	freshAttempt.TotalQuestions = len(questions)
 	freshAttempt.TimeTaken = int(time.Since(freshAttempt.StartedAt).Seconds())
-	freshAttempt.SubmittedAt = submittedAt
+	freshAttempt.SubmittedAt = &submittedAt
 	freshAttempt.IsAutoSubmitted = true
 
 	// Post-commit side effects: persist result + track wrong answers

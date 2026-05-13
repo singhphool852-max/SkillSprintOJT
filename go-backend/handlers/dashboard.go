@@ -63,10 +63,10 @@ func GetUserDashboardFull(c *gin.Context) {
 	}
 	database.DB.Table("test_attempts").
 		Select("COUNT(*) as total_attempts, "+
-			"SUM(CASE WHEN submittedAt IS NOT NULL AND submittedAt != '' THEN 1 ELSE 0 END) as submitted_count, "+
+			"SUM(CASE WHEN submittedAt IS NOT NULL THEN 1 ELSE 0 END) as submitted_count, "+
 			"MAX(score) as high_score, "+
-			"AVG(CASE WHEN submittedAt IS NOT NULL AND submittedAt != '' THEN score END) as avg_score, "+
-			"SUM(CASE WHEN submittedAt IS NOT NULL AND submittedAt != '' THEN score ELSE 0 END) as total_score").
+			"AVG(CASE WHEN submittedAt IS NOT NULL THEN score END) as avg_score, "+
+			"SUM(CASE WHEN submittedAt IS NOT NULL THEN score ELSE 0 END) as total_score").
 		Where("userId = ?", userID).
 		Scan(&overallStats)
 
@@ -90,7 +90,7 @@ func GetUserDashboardFull(c *gin.Context) {
 			"SUM(tests.maxScore) as max_possible").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
 		Joins("LEFT JOIN topics ON topics.id = tests.topicId").
-		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''", userID).
+		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL", userID).
 		Group("topics.id, topics.name").
 		Scan(&topicRows)
 
@@ -159,7 +159,7 @@ func GetUserDashboardFull(c *gin.Context) {
 	database.DB.Table("test_attempts").
 		Select("tests.title as test_title, test_attempts.score, tests.maxScore as max_possible, test_attempts.submittedAt as submitted_at").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
-		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''", userID).
+		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL", userID).
 		Order("test_attempts.submittedAt ASC").
 		Limit(15).
 		Scan(&trendRows)
@@ -198,7 +198,7 @@ func GetUserDashboardFull(c *gin.Context) {
 			"test_attempts.submittedAt as submitted_at").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
 		Joins("LEFT JOIN topics ON topics.id = tests.topicId").
-		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL AND test_attempts.submittedAt != ''", userID).
+		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL", userID).
 		Order("test_attempts.submittedAt DESC").
 		Limit(10).
 		Scan(&completedRows)
@@ -227,7 +227,7 @@ func GetUserDashboardFull(c *gin.Context) {
 	var globalRank int64
 	database.DB.Table("test_attempts").
 		Select("COUNT(DISTINCT userId)").
-		Where("submittedAt IS NOT NULL AND submittedAt != ''").
+		Where("submittedAt IS NOT NULL").
 		Group("userId").
 		Having("SUM(score) > ?", overallStats.TotalScore).
 		Count(&globalRank)
@@ -237,7 +237,7 @@ func GetUserDashboardFull(c *gin.Context) {
 	// Total participants
 	var totalParticipants int64
 	database.DB.Table("test_attempts").
-		Where("submittedAt IS NOT NULL AND submittedAt != ''").
+		Where("submittedAt IS NOT NULL").
 		Distinct("userId").
 		Count(&totalParticipants)
 

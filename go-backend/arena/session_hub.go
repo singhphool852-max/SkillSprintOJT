@@ -109,7 +109,7 @@ func (h *SessionHub) BroadcastTestStateChange(testID string, state string) {
 	h.mu.RUnlock()
 
 	var attempts []models.TestAttempt
-	database.DB.Where("testId = ? AND (submittedAt IS NULL OR submittedAt = '')", testID).Find(&attempts)
+	database.DB.Where("testId = ? AND submittedAt IS NULL", testID).Find(&attempts)
 
 	for _, a := range attempts {
 		h.SendEvent(a.ID, "test_state", map[string]interface{}{
@@ -151,11 +151,16 @@ func (h *SessionHub) timerLoop() {
 				continue
 			}
 
-			elapsed := now.Sub(attempt.Test.StartTime)
+			// Check if test has start time
+			if attempt.Test.StartTime == nil {
+				continue
+			}
+
+			elapsed := now.Sub(*attempt.Test.StartTime)
 			remaining := attempt.Test.DurationSeconds - int(elapsed.Seconds())
 
 			status := "live"
-			if now.Before(attempt.Test.StartTime) {
+			if now.Before(*attempt.Test.StartTime) {
 				status = "upcoming"
 				remaining = attempt.Test.DurationSeconds
 			} else if remaining <= 0 {
