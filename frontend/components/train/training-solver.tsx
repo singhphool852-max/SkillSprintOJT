@@ -385,7 +385,7 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
             </div>
             <div className="flex flex-col">
               <span className="font-mono text-[10px] tracking-[0.2em] text-neon-cyan uppercase leading-tight">
-                {topic} // PRACTICE SESSION
+                {topic} // {viewingSummary ? "SESSION SYNOPSIS" : "PRACTICE SESSION"}
               </span>
               <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-widest">
                 {mode.replace('_', ' ')} — {difficulty}
@@ -393,28 +393,30 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-              <Target className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-mono text-xs text-foreground uppercase tracking-tighter">
-                QUESTION {currentQ + 1} <span className="text-muted-foreground">OF</span> {initialQuestions.length}
-              </span>
+          {!viewingSummary && (
+            <div className="flex items-center gap-8">
+              <div className="flex items-center gap-2">
+                <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-mono text-xs text-foreground uppercase tracking-tighter">
+                  QUESTION {currentQ + 1} <span className="text-muted-foreground">OF</span> {initialQuestions.length}
+                </span>
+              </div>
+              
+              <div className={`flex items-center gap-3 px-4 py-2 border ${timeLeft < 10 ? 'border-neon-pink/40 bg-neon-pink/5' : 'border-panel-border'}`}>
+                 <Clock className={`h-4 w-4 ${timeLeft < 10 ? 'text-neon-pink animate-pulse' : 'text-muted-foreground'}`} />
+                 <span className={`font-mono text-sm font-bold ${timeLeft < 10 ? 'text-neon-pink' : 'text-foreground'}`}>
+                   {timeLeft < 10 ? `0:0${timeLeft}` : `0:${timeLeft}`}
+                 </span>
+              </div>
             </div>
-            
-            <div className={`flex items-center gap-3 px-4 py-2 border ${timeLeft < 10 ? 'border-neon-pink/40 bg-neon-pink/5' : 'border-panel-border'}`}>
-               <Clock className={`h-4 w-4 ${timeLeft < 10 ? 'text-neon-pink animate-pulse' : 'text-muted-foreground'}`} />
-               <span className={`font-mono text-sm font-bold ${timeLeft < 10 ? 'text-neon-pink' : 'text-foreground'}`}>
-                 {timeLeft < 10 ? `0:0${timeLeft}` : `0:${timeLeft}`}
-               </span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Global Progress Bar */}
         <div className="h-[2px] bg-panel-border overflow-hidden">
           <div 
             className="h-full bg-neon-cyan transition-all duration-1000 ease-out shadow-[0_0_10px_#00e5ff]"
-            style={{ width: `${progressPercent}%` }}
+            style={{ width: `${viewingSummary ? 0 : progressPercent}%` }}
           />
         </div>
       </div>
