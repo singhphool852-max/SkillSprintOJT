@@ -71,6 +71,9 @@ func HandleAIBuildTest(c *gin.Context) {
 		return
 	}
 
+	// Get topicId from form (optional)
+	topicID := c.PostForm("topicId")
+
 	// Parse multipart form
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -113,7 +116,7 @@ func HandleAIBuildTest(c *gin.Context) {
 	}
 
 	// Create draft test in database
-	testID, err := createDraftTestFromAI(aiResponse, userID.(string))
+	testID, err := createDraftTestFromAI(aiResponse, userID.(string), topicID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create test: %v", err)})
 		return
@@ -331,17 +334,36 @@ Rules:
 // ──────────────────────────────────────────────
 // Create draft test from AI response
 // ──────────────────────────────────────────────
-func createDraftTestFromAI(aiTest *AITestResponse, createdBy string) (string, error) {
+func createDraftTestFromAI(aiTest *AITestResponse, createdBy string, requestedTopicID string) (string, error) {
 	testID := uuid.New().String()
 	now := time.Now()
 	startTime := now.Add(24 * time.Hour) // Default: start tomorrow
+
+	// Determine valid topicId
+	var topicID string
+	
+	// Priority 1: Use topicId from request if provided
+	if requestedTopicID != "" {
+		var topic models.Topic
+		if err := database.DB.Where("id = ?", requestedTopicID).First(&topic).Error; err != nil {
+			return "", fmt.Errorf("selected topic not found: %v", err)
+		}
+		topicID = topic.ID
+	} else {
+		// Priority 2: Get first available topic as fallback
+		var defaultTopic models.Topic
+		if err := database.DB.First(&defaultTopic).Error; err != nil {
+			return "", fmt.Errorf("no topics found in database. Please create a topic first")
+		}
+		topicID = defaultTopic.ID
+	}
 
 	// Create test
 	test := models.Test{
 		ID:              testID,
 		Title:           aiTest.Title,
 		Description:     aiTest.Description + " (AI Generated - Review before publishing)",
-		TopicID:         aiTest.TopicID,
+		TopicID:         topicID, // Use verified topicID
 		Difficulty:      aiTest.Difficulty,
 		StartTime:       &startTime,
 		DurationSeconds: aiTest.DurationMinutes * 60,
