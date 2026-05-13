@@ -5,41 +5,29 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
-	"os"
 )
 
-// ──────────────────────────────────────────────
-// Executor — pluggable code execution interface.
-//
-// Implementations:
-//   - LocalExecutor:  runs in Docker containers (production)
-//   - CloudExecutor:  sends to remote worker fleet (future)
-//
-// To swap: change NewDefaultExecutor() in service.go.
-// ──────────────────────────────────────────────
-
-// Executor defines how code is run against testcases.
 type Executor interface {
 	Run(code, language, input string, timeLimitMs int) (ExecutionResult, error)
 	SupportedLanguages() []LanguageInfo
 }
 
-// ExecutionResult holds the output from a single code execution.
 type ExecutionResult struct {
 	Output     string `json:"output"`
 	ExitCode   int    `json:"exitCode"`
 	TimedOut   bool   `json:"timedOut"`
-	Error      string `json:"error"`      // empty means success
-	ErrorType  string `json:"errorType"`  // compilation_error, runtime_error, time_limit_exceeded
-	CompileOut string `json:"compileOut"` // compilation output (errors/warnings)
-	DurationMs int64  `json:"durationMs"` // wall-clock execution time
+	Error      string `json:"error"`
+	ErrorType  string `json:"errorType"`
+	CompileOut string `json:"compileOut"`
+	DurationMs int64  `json:"durationMs"`
 }
 
-// LanguageInfo describes a supported language.
 type LanguageInfo struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -47,7 +35,6 @@ type LanguageInfo struct {
 	Template string `json:"template"`
 }
 
-// LocalExecutor runs code in isolated Docker containers with resource limits.
 type LocalExecutor struct{}
 
 func NewLocalExecutor() *LocalExecutor {
@@ -56,66 +43,173 @@ func NewLocalExecutor() *LocalExecutor {
 
 func (e *LocalExecutor) SupportedLanguages() []LanguageInfo {
 	return []LanguageInfo{
-		{ID: "python", Name: "Python 3", Version: "3.11", Template: "import sys\n\ndef solve():\n    # Read input\n    line = input()\n    # Your solution here\n    print(line)\n\nsolve()\n"},
-		{ID: "cpp", Name: "C++", Version: "C++17", Template: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Read input\n    string s;\n    getline(cin, s);\n    // Your solution here\n    cout << s << endl;\n    return 0;\n}\n"},
-		{ID: "java", Name: "Java", Version: "21", Template: "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Read input\n        String s = sc.nextLine();\n        // Your solution here\n        System.out.println(s);\n    }\n}\n"},
-		{ID: "javascript", Name: "JavaScript", Version: "Node.js 20", Template: "const readline = require('readline');\nconst rl = readline.createInterface({ input: process.stdin });\nconst lines = [];\nrl.on('line', (line) => lines.push(line));\nrl.on('close', () => {\n    // Your solution here\n    console.log(lines[0]);\n});\n"},
-		{ID: "go", Name: "Go", Version: "1.21", Template: "package main\n\nimport (\n\t\"bufio\"\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tscanner := bufio.NewScanner(os.Stdin)\n\tscanner.Scan()\n\t// Your solution here\n\tfmt.Println(scanner.Text())\n}\n"},
+		{
+			ID:      "python",
+			Name:    "Python 3",
+			Version: "3.11",
+			Template: "import sys\n\ndef solve():\n    n = int(input())\n    arr = list(map(int, input().split()))\n    # Your solution here\n    print(arr)\n\nsolve()\n",
+		},
+		{
+			ID:      "cpp",
+			Name:    "C++",
+			Version: "C++17",
+			Template: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    int n;\n    cin >> n;\n    vector<int> arr(n);\n    for(int i=0;i<n;i++) cin >> arr[i];\n    // Your solution here\n    return 0;\n}\n",
+		},
+		{
+			ID:      "java",
+			Name:    "Java",
+			Version: "21",
+			Template: "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        int[] arr = new int[n];\n        for(int i=0;i<n;i++) arr[i] = sc.nextInt();\n        // Your solution here\n    }\n}\n",
+		},
+		{
+			ID:      "javascript",
+			Name:    "JavaScript",
+			Version: "Node.js 20",
+			Template: "const lines = require('fs').readFileSync('/dev/stdin','utf8').trim().split('\\n');\nconst n = parseInt(lines[0]);\nconst arr = lines[1].split(' ').map(Number);\n// Your solution here\n",
+		},
+		{
+			ID:      "go",
+			Name:    "Go",
+			Version: "1.21",
+			Template: "package main\n\nimport (\n\t\"bufio\"\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\treader := bufio.NewReader(os.Stdin)\n\tvar n int\n\tfmt.Fscan(reader, &n)\n\tarr := make([]int, n)\n\tfor i := 0; i < n; i++ {\n\t\tfmt.Fscan(reader, &arr[i])\n\t}\n\t// Your solution here\n}\n",
+		},
 	}
 }
 
-// Run executes code in an isolated Docker container with security constraints.
-// Each execution:
-// - Creates isolated temp directory
-// - Writes code to file
-// - Runs in Docker with: no network, memory limit, CPU limit, read-only code mount
-// - 10 second timeout
-// - Captures stdout for comparison
-// - Cleans up temp directory
+func normalizeInput(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
+
+func normalizeOutput(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
+
+func compile(args []string, timeoutSec int) (string, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		time.Duration(timeoutSec)*time.Second,
+	)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
 func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (ExecutionResult, error) {
-	log.Printf("[EXECUTOR] executing language: %s", language)
-	
+	log.Printf("[EXECUTOR] lang=%s input_len=%d", language, len(input))
+
 	if timeLimitMs <= 0 {
 		timeLimitMs = 2000
 	}
 
-	// Create isolated temp directory for this execution
 	tmpDir, err := os.MkdirTemp("", "judge-*")
 	if err != nil {
-		return ExecutionResult{Error: "failed to create temp dir", ErrorType: "internal_error"}, err
+		return ExecutionResult{
+			Error:     "failed to create temp dir",
+			ErrorType: "internal_error",
+		}, err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	var filename, image string
-	var runCmd []string
+	// Normalize input — preserve ALL newlines, only fix \r\n
+	input = normalizeInput(input)
+	log.Printf("[EXECUTOR] normalized input=%q", input)
 
-	// Language to Docker image mapping
+	var runArgs []string
+	var runDir string
+
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case "python", "python3":
-		filename = "solution.py"
-		image = "python:3.11-alpine"
-		runCmd = []string{"python3", "/code/solution.py"}
-		
-	case "go", "golang":
-		filename = "main.go"
-		image = "golang:1.21-alpine"
-		runCmd = []string{"go", "run", "/code/main.go"}
-		
+		srcPath := filepath.Join(tmpDir, "solution.py")
+		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
+			return ExecutionResult{
+				Error:     "failed to write source",
+				ErrorType: "internal_error",
+			}, err
+		}
+		runArgs = []string{"python3", srcPath}
+
 	case "cpp", "c++", "c":
-		filename = "solution.cpp"
-		image = "gcc:13"
-		runCmd = []string{"sh", "-c", "g++ -O2 -o /tmp/solution /code/solution.cpp && /tmp/solution"}
-		
+		srcPath := filepath.Join(tmpDir, "solution.cpp")
+		binPath := filepath.Join(tmpDir, "solution")
+		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
+			return ExecutionResult{
+				Error:     "failed to write source",
+				ErrorType: "internal_error",
+			}, err
+		}
+
+		compOut, compErr := compile(
+			[]string{"g++", "-O2", "-o", binPath, srcPath, "-std=c++17"},
+			15,
+		)
+		if compErr != nil {
+			return ExecutionResult{
+				Output:     compOut,
+				CompileOut: compOut,
+				ExitCode:   1,
+				Error:      "compilation_error",
+				ErrorType:  "compilation_error",
+			}, nil
+		}
+		runArgs = []string{binPath}
+
 	case "java":
-		filename = "Main.java"
-		image = "openjdk:21-slim"
-		runCmd = []string{"sh", "-c", "javac /code/Main.java && java -cp /code Main"}
-		
+		className := "Main"
+		re := regexp.MustCompile(`public\s+class\s+(\w+)`)
+		if m := re.FindStringSubmatch(code); len(m) > 1 {
+			className = m[1]
+		}
+
+		srcPath := filepath.Join(tmpDir, className+".java")
+		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
+			return ExecutionResult{
+				Error:     "failed to write source",
+				ErrorType: "internal_error",
+			}, err
+		}
+
+		compOut, compErr := compile([]string{"javac", "-d", tmpDir, srcPath}, 15)
+		if compErr != nil {
+			return ExecutionResult{
+				Output:     compOut,
+				CompileOut: compOut,
+				ExitCode:   1,
+				Error:      "compilation_error",
+				ErrorType:  "compilation_error",
+			}, nil
+		}
+		runArgs = []string{"java", "-cp", tmpDir, className}
+
 	case "javascript", "js", "node":
-		filename = "solution.js"
-		image = "node:20-alpine"
-		runCmd = []string{"node", "/code/solution.js"}
-		
+		srcPath := filepath.Join(tmpDir, "solution.js")
+		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
+			return ExecutionResult{
+				Error:     "failed to write source",
+				ErrorType: "internal_error",
+			}, err
+		}
+		runArgs = []string{"node", srcPath}
+
+	case "go", "golang":
+		srcPath := filepath.Join(tmpDir, "main.go")
+		if err := os.WriteFile(srcPath, []byte(code), 0644); err != nil {
+			return ExecutionResult{
+				Error:     "failed to write source",
+				ErrorType: "internal_error",
+			}, err
+		}
+		// go run handles single-file compilation with no go.mod needed
+		runArgs = []string{"go", "run", srcPath}
+		runDir = tmpDir
+		// Add 8s compile buffer — does NOT count toward user TLE verdict
+		timeLimitMs += 8000
+
 	default:
 		return ExecutionResult{
 			Error:     fmt.Sprintf("unsupported language: %s", language),
@@ -123,65 +217,71 @@ func (e *LocalExecutor) Run(code, language, input string, timeLimitMs int) (Exec
 		}, fmt.Errorf("unsupported language: %s", language)
 	}
 
-	// Write code to temp directory
-	filePath := filepath.Join(tmpDir, filename)
-	if err := os.WriteFile(filePath, []byte(code), 0644); err != nil {
-		return ExecutionResult{Error: "failed to write code file", ErrorType: "internal_error"}, err
-	}
-
-	// Create timeout context (10 seconds max)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// ── Run phase ──
+	timeout := time.Duration(timeLimitMs) * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Build docker run command with security constraints
-	args := []string{
-		"run", "--rm",
-		"--network", "none",           // No network access
-		"--memory", "128m",            // 128MB RAM limit
-		"--memory-swap", "128m",       // No swap
-		"--cpus", "0.5",               // 50% CPU limit
-		"--pids-limit", "50",          // Max 50 processes
-		"-v", tmpDir + ":/code:ro",    // Mount code as read-only
-		"-i",                          // Interactive (for stdin)
-		image,
+	cmd := exec.CommandContext(ctx, runArgs[0], runArgs[1:]...)
+	if runDir != "" {
+		cmd.Dir = runDir
 	}
-	args = append(args, runCmd...)
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	// Pipe input to stdin — newlines preserved exactly
 	cmd.Stdin = strings.NewReader(input)
-	
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
 
 	startTime := time.Now()
-	if err := cmd.Run(); err != nil {
-		duration := time.Since(startTime).Milliseconds()
-		
-		// Check if timeout occurred
-		if ctx.Err() == context.DeadlineExceeded {
-			return ExecutionResult{
-				Output:     "TIME LIMIT EXCEEDED",
-				TimedOut:   true,
-				Error:      "time_limit_exceeded",
-				ErrorType:  "time_limit_exceeded",
-				DurationMs: 10000,
-			}, nil
-		}
-		
-		// Runtime error
+	runErr := cmd.Run()
+	duration := time.Since(startTime).Milliseconds()
+
+	stdout := normalizeOutput(stdoutBuf.String())
+	stderr := stderrBuf.String()
+
+	log.Printf("[EXECUTOR] lang=%s duration=%dms stdout=%q stderr=%q",
+		language, duration, stdout, stderr)
+
+	if ctx.Err() == context.DeadlineExceeded {
 		return ExecutionResult{
-			Output:     strings.TrimSpace(stderr.String()),
+			Output:     stdout,
+			CompileOut: stderr,
+			ExitCode:   -1,
+			TimedOut:   true,
+			Error:      "time_limit_exceeded",
+			ErrorType:  "time_limit_exceeded",
+			DurationMs: duration,
+		}, nil
+	}
+
+	if runErr != nil {
+		exitCode := 0
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+
+		errOutput := stdout
+		if stderr != "" {
+			if errOutput != "" {
+				errOutput += "\n"
+			}
+			errOutput += stderr
+		}
+
+		return ExecutionResult{
+			Output:     errOutput,
+			CompileOut: stderr,
+			ExitCode:   exitCode,
 			Error:      "runtime_error",
 			ErrorType:  "runtime_error",
 			DurationMs: duration,
-		}, fmt.Errorf("runtime error: %s", strings.TrimSpace(stderr.String()))
+		}, nil
 	}
-	
-	duration := time.Since(startTime).Milliseconds()
 
 	return ExecutionResult{
-		Output:     strings.TrimSpace(stdout.String()),
+		Output:     stdout,
 		ExitCode:   0,
 		DurationMs: duration,
 	}, nil
