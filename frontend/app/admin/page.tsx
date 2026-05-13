@@ -406,7 +406,7 @@ export default function AdminTestsPage() {
         {!loading && tests.length > 0 && (
           <div className="border border-panel-border bg-panel-bg/40">
             {/* Header */}
-            <div className="grid grid-cols-[1fr_120px_160px_80px_80px_160px] gap-3 px-5 py-3 border-b border-panel-border">
+            <div className="grid grid-cols-[1fr_120px_160px_80px_100px_200px] gap-4 px-5 py-3 border-b border-panel-border">
               <span className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">TITLE</span>
               <span className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">TOPIC</span>
               <span className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">START TIME</span>
@@ -419,7 +419,7 @@ export default function AdminTestsPage() {
             {tests.map((test) => (
               <div
                 key={test.id}
-                className="grid grid-cols-[1fr_120px_160px_80px_80px_160px] gap-3 items-center px-5 py-3 border-b border-panel-border/50 last:border-0 hover:bg-neon-pink/5 transition-colors"
+                className="grid grid-cols-[1fr_120px_160px_80px_100px_200px] gap-4 items-center px-5 py-3 border-b border-panel-border/50 last:border-0 hover:bg-neon-pink/5 transition-colors"
               >
                 <Link
                   href={`/admin/tests/${test.id}`}
@@ -447,14 +447,14 @@ export default function AdminTestsPage() {
                   </span>
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 whitespace-nowrap">
                   <div className={`h-1.5 w-1.5 rounded-full ${test.isActive ? "bg-neon-green animate-pulse-glow" : test.isPublished ? "bg-neon-cyan animate-pulse-glow" : "bg-muted-foreground"}`} />
                   <span className={`font-mono text-[10px] tracking-wider ${test.isActive ? "text-neon-green" : test.isPublished ? "text-neon-cyan" : "text-muted-foreground"}`}>
                     {test.isActive ? "ACTIVE" : test.isPublished ? "LIVE" : "DRAFT"}
                   </span>
                 </div>
 
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end items-center gap-2">
                   {test.isPublished && (
                     <button
                       onClick={() => handleToggleActivate(test.id)}
