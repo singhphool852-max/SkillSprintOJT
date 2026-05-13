@@ -25,7 +25,9 @@ export default function ChatPage() {
       const authCookie = cookies.find((c) => c.startsWith("auth_token="))
       return authCookie ? authCookie.split("=")[1] : null
     }
-    setToken(getToken())
+    const retrievedToken = getToken()
+    console.log('[CHAT] Token retrieved:', retrievedToken ? 'YES (length: ' + retrievedToken.length + ')' : 'NO')
+    setToken(retrievedToken)
   }, [user])
 
   const { messages, onlineCount, isConnected, sendMessage, sendFile } = useChat(token)
