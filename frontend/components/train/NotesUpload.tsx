@@ -79,7 +79,7 @@ export function NotesUpload() {
         sessionStorage.setItem("skillsprint_notes_summary", data.summary)
       }
 
-      router.push(`/train/play/${data.session_id}?topic=${encodeURIComponent(topic)}&mode=AI_SYNTH_MODE&difficulty=${encodeURIComponent(difficulty)}&count=${data.count}`)
+      router.push(`/train/play/${data.session_id}?topic=${encodeURIComponent(topic)}&mode=NOTES_SYNC_MODE&difficulty=${encodeURIComponent(difficulty)}&count=${data.count}`)
     } catch (err: any) {
       console.error("[NOTES_UPLOAD] Fatal Error:", err)
       

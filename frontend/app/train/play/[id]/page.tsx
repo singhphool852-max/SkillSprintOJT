@@ -24,13 +24,18 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
   const [summary, setSummary] = useState<string | undefined>(undefined)
 
   useEffect(() => {
+    const isNotesMode = mode.toUpperCase() === "NOTES_SYNC_MODE"
     const savedSummary = sessionStorage.getItem("skillsprint_notes_summary")
-    if (savedSummary) {
+    
+    if (isNotesMode && savedSummary) {
       setSummary(savedSummary)
-      // Optional: clear it so it doesn't persist across different sessions
-      // sessionStorage.removeItem("skillsprint_notes_summary")
+    } else {
+      // If we're not in notes mode, or no summary exists, ensure state is clear
+      setSummary(undefined)
+      // And clear it from storage so it doesn't leak into future sessions
+      if (!isNotesMode) sessionStorage.removeItem("skillsprint_notes_summary")
     }
-  }, [])
+  }, [mode])
 
   const fetchQuestions = async () => {
     if (!id) return;
