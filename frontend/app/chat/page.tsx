@@ -128,9 +128,27 @@ export default function ChatPage() {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto max-w-4xl space-y-4">
+          {/* Debug info */}
+          <div className="mb-4 border border-neon-cyan/30 bg-neon-cyan/5 p-3 font-mono text-xs">
+            <p>Connected: {isConnected ? 'YES' : 'NO'}</p>
+            <p>Messages count: {messages.length}</p>
+            <p>Online count: {onlineCount}</p>
+          </div>
+
+          {messages.length === 0 && (
+            <div className="text-center py-8">
+              <p className="font-mono text-sm text-muted-foreground">
+                No messages yet. Start the conversation!
+              </p>
+            </div>
+          )}
+
           {messages.map((msg, idx) => {
+            console.log('[CHAT PAGE] Rendering message:', idx, msg)
             const isOwnMessage = msg.user_id === user.id
             const isSystemMessage = msg.type !== "message"
+
+            console.log('[CHAT PAGE] isSystemMessage:', isSystemMessage, 'type:', msg.type)
 
             if (isSystemMessage) return null
 
