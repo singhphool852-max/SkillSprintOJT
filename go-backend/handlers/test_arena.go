@@ -28,7 +28,10 @@ func isTestExpired(testID string) (int, bool) {
 	if err := database.DB.Where("id = ?", testID).First(&test).Error; err != nil {
 		return 0, true
 	}
-	elapsed := time.Since(test.StartTime)
+	if test.StartTime == nil {
+		return 0, true
+	}
+	elapsed := time.Since(*test.StartTime)
 	remaining := test.DurationSeconds - int(elapsed.Seconds())
 	if remaining <= 0 {
 		return 0, true
@@ -53,12 +56,16 @@ func GetActiveTest(c *gin.Context) {
 
 	// Determine status
 	now := time.Now()
-	elapsed := now.Sub(test.StartTime)
+	if test.StartTime == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test has no start time"})
+		return
+	}
+	elapsed := now.Sub(*test.StartTime)
 	elapsedSeconds := int(elapsed.Seconds())
 	remainingSeconds := test.DurationSeconds - elapsedSeconds
 
 	status := "upcoming"
-	if now.Before(test.StartTime) {
+	if now.Before(*test.StartTime) {
 		status = "upcoming"
 		elapsedSeconds = 0
 		remainingSeconds = test.DurationSeconds
@@ -108,7 +115,11 @@ func JoinTest(c *gin.Context) {
 	}
 
 	// Calculate remaining time
-	elapsed := time.Since(test.StartTime)
+	if test.StartTime == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test has no start time"})
+		return
+	}
+	elapsed := time.Since(*test.StartTime)
 	remainingSeconds := test.DurationSeconds - int(elapsed.Seconds())
 
 	if remainingSeconds <= 0 {
@@ -163,7 +174,11 @@ func GetTestAttempt(c *gin.Context) {
 	}
 
 	// Calculate remaining time
-	elapsed := time.Since(attempt.Test.StartTime)
+	if attempt.Test.StartTime == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test has no start time"})
+		return
+	}
+	elapsed := time.Since(*attempt.Test.StartTime)
 	remainingSeconds := attempt.Test.DurationSeconds - int(elapsed.Seconds())
 	if remainingSeconds < 0 {
 		remainingSeconds = 0
@@ -690,7 +705,12 @@ func SubmitTestAttempt(c *gin.Context) {
 	// Check if auto-submitted (time ran out)
 	var test models.Test
 	tx.Where("id = ?", attempt.TestID).First(&test)
-	elapsed := time.Since(test.StartTime)
+	if test.StartTime == nil {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test has no start time"})
+		return
+	}
+	elapsed := time.Since(*test.StartTime)
 	isAutoSubmitted := int(elapsed.Seconds()) >= test.DurationSeconds
 
 	// FIX: Use targeted Updates() instead of Save() to prevent zero-value overwrites
@@ -758,7 +778,11 @@ func GetAttemptStatus(c *gin.Context) {
 	}
 
 	// Calculate remaining time
-	elapsed := time.Since(attempt.Test.StartTime)
+	if attempt.Test.StartTime == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Test has no start time"})
+		return
+	}
+	elapsed := time.Since(*attempt.Test.StartTime)
 	remainingSeconds := attempt.Test.DurationSeconds - int(elapsed.Seconds())
 	if remainingSeconds < 0 {
 		remainingSeconds = 0

@@ -12,7 +12,7 @@ type Test struct {
 	Title           string     `gorm:"column:title" json:"title"`
 	Description     string     `gorm:"column:description" json:"description"`
 	TopicID         string     `gorm:"type:varchar(191);index;column:topicId" json:"topicId,omitempty"`
-	StartTime       time.Time  `gorm:"column:startTime" json:"startTime"`
+	StartTime       *time.Time `gorm:"column:startTime" json:"startTime"`
 	DurationSeconds int        `gorm:"column:durationSeconds" json:"durationSeconds"`
 	Difficulty      string     `gorm:"column:difficulty" json:"difficulty"` // "easy", "medium", "hard"
 	MaxScore        int        `gorm:"column:maxScore" json:"maxScore"`

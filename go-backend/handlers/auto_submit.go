@@ -34,7 +34,10 @@ func autoSubmitExpiredAttempts() {
 
 	now := time.Now()
 	for _, test := range tests {
-		elapsed := now.Sub(test.StartTime)
+		if test.StartTime == nil {
+			continue
+		}
+		elapsed := now.Sub(*test.StartTime)
 		if int(elapsed.Seconds()) < test.DurationSeconds {
 			continue // test still running
 		}
