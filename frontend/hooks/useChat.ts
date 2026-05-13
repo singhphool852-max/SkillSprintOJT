@@ -50,8 +50,8 @@ export function useChat(token: string | null) {
   const connect = useCallback(() => {
     if (!token || wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'https://skillsprintojt.onrender.com'
-    const wsBase = apiBase.replace('https://', 'wss://').replace('http://', 'ws://')
+    // Use the same API_URL as the rest of the app
+    const wsBase = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
     const wsUrl = `${wsBase}/ws/chat?token=${token}`
     
     console.log('[CHAT] Connecting to:', wsUrl)
@@ -65,14 +65,18 @@ export function useChat(token: string | null) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        console.log('[CHAT] Message received:', msg)
         
         if (msg.type === 'message') {
+          console.log('[CHAT] Adding message to state:', msg)
           setMessages((prev) => [...prev, msg])
         }
         if (msg.type === 'online_count') {
+          console.log('[CHAT] Updating online count:', msg.online_count)
           setOnlineCount(msg.online_count)
         }
         if (msg.type === 'user_joined' || msg.type === 'user_left') {
+          console.log('[CHAT] User event:', msg.type)
           if (msg.online_count !== undefined) {
             setOnlineCount(msg.online_count)
           }
@@ -118,7 +122,7 @@ export function useChat(token: string | null) {
   const sendMessage = useCallback(
     (content: string, messageType: string = "text") => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        console.error("[CHAT] WebSocket not connected")
+        console.error("[CHAT] WebSocket not connected, readyState:", wsRef.current?.readyState)
         return
       }
 
@@ -129,6 +133,7 @@ export function useChat(token: string | null) {
         timestamp: new Date().toISOString(),
       }
 
+      console.log('[CHAT] Sending message:', event)
       wsRef.current.send(JSON.stringify(event))
     },
     []

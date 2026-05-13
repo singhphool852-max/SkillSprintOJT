@@ -11,13 +11,13 @@ import (
 
 // ChatEvent represents all types of chat events (messages, joins, leaves)
 type ChatEvent struct {
-	Type        string `json:"type"`                   // "message", "user_joined", "user_left", "ping"
-	UserID      string `json:"userId"`
+	Type        string `json:"type"`                     // "message", "user_joined", "user_left", "ping"
+	UserID      string `json:"user_id"`
 	Username    string `json:"username"`
 	Avatar      string `json:"avatar,omitempty"`
-	MessageType string `json:"messageType,omitempty"`   // "text", "note", "image", "pdf"
+	MessageType string `json:"message_type,omitempty"`   // "text", "note", "image", "pdf"
 	Content     string `json:"content,omitempty"`
-	FileName    string `json:"fileName,omitempty"`
+	FileName    string `json:"file_name,omitempty"`
 	Timestamp   string `json:"timestamp"`
 	OnlineCount int    `json:"online_count,omitempty"`
 }
