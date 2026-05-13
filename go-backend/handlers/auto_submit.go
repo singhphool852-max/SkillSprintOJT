@@ -43,19 +43,13 @@ func autoSubmitExpiredAttempts() {
 		}
 
 		// Find un-submitted attempts for this ended test
-		// FIX: Exclude Go zero-time values that SQLite stores as real timestamps
 		var attempts []models.TestAttempt
 		database.DB.Where(
-			"testId = ? AND (submittedAt IS NULL OR submittedAt = '' OR submittedAt < '0001-01-02')",
+			"testId = ? AND submittedAt IS NULL",
 			test.ID,
 		).Find(&attempts)
 
 		for _, attempt := range attempts {
-			// Double-check in Go (belt + suspenders)
-			if !attempt.SubmittedAt.IsZero() {
-				continue
-			}
-
 			autoSubmitSingleAttempt(attempt, test)
 		}
 	}
@@ -88,7 +82,7 @@ func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
 	}
 
 	// If already submitted, skip — someone else got there first
-	if !freshAttempt.SubmittedAt.IsZero() {
+	if freshAttempt.SubmittedAt != nil {
 		tx.Rollback()
 		log.Printf("[AUTO-SUBMIT] attempt %s already submitted, skipping", attempt.ID)
 		return
