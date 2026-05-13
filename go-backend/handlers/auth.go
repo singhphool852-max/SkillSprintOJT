@@ -140,6 +140,7 @@ func LoginHandler(c *gin.Context) {
 		"email":    user.Email,
 		"username": user.Username,
 		"role":     user.Role,
+		"token":    tokenString, // Include token in response for WebSocket use
 	})
 }
 
@@ -290,6 +291,7 @@ func GoogleLoginHandler(c *gin.Context) {
 		"username":  user.Username,
 		"role":      user.Role,
 		"avatarUrl": user.AvatarURL,
+		"token":     tokenString, // Include token in response for WebSocket use
 	})
 }
 

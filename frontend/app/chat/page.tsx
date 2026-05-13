@@ -18,15 +18,18 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Get token from cookie
+  // Get token from localStorage (not cookies since HttpOnly prevents JS access)
   useEffect(() => {
-    const getToken = () => {
-      const cookies = document.cookie.split("; ")
-      const authCookie = cookies.find((c) => c.startsWith("auth_token="))
-      return authCookie ? authCookie.split("=")[1] : null
-    }
-    const retrievedToken = getToken()
-    console.log('[CHAT] Token retrieved:', retrievedToken ? 'YES (length: ' + retrievedToken.length + ')' : 'NO')
+    const retrievedToken = localStorage.getItem('auth_token')
+    console.log('[CHAT] Token retrieved from localStorage:', retrievedToken ? 'YES (length: ' + retrievedToken.length + ')' : 'NO')
+    console.log('[CHAT] API_URL:', API_URL)
+    
+    // Test if backend is reachable
+    fetch(`${API_URL}/api/chat/test`)
+      .then(r => r.json())
+      .then(data => console.log('[CHAT] Backend test:', data))
+      .catch(e => console.error('[CHAT] Backend NOT reachable:', e))
+    
     setToken(retrievedToken)
   }, [user])
 
@@ -135,6 +138,22 @@ export default function ChatPage() {
             <p>Connected: {isConnected ? 'YES' : 'NO'}</p>
             <p>Messages count: {messages.length}</p>
             <p>Online count: {onlineCount}</p>
+            <p>Token: {token ? 'EXISTS' : 'MISSING'}</p>
+            <button 
+              onClick={() => {
+                console.log('[CHAT] Manual connection test')
+                const wsBase = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
+                const wsUrl = `${wsBase}/ws/chat?token=${token}`
+                console.log('[CHAT] Attempting connection to:', wsUrl)
+                const testWs = new WebSocket(wsUrl)
+                testWs.onopen = () => console.log('[CHAT] TEST: Connected!')
+                testWs.onerror = (e) => console.error('[CHAT] TEST: Error', e)
+                testWs.onclose = (e) => console.log('[CHAT] TEST: Closed', e.code, e.reason)
+              }}
+              className="mt-2 border border-neon-cyan px-2 py-1 text-neon-cyan hover:bg-neon-cyan/10"
+            >
+              Test WebSocket Connection
+            </button>
             <details className="mt-2">
               <summary className="cursor-pointer text-neon-cyan">Show raw messages</summary>
               <pre className="mt-2 max-h-40 overflow-auto text-[10px]">

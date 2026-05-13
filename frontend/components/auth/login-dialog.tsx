@@ -53,7 +53,14 @@ export function LoginDialog({ open, onClose }: LoginDialogProps) {
         return
       }
 
-      // Login successful — navigate to arena
+      // Login successful - store token for WebSocket use
+      const data = await res.json()
+      if (data.token) {
+        localStorage.setItem('auth_token', data.token)
+        console.log('[AUTH] Token stored in localStorage for WebSocket')
+      }
+
+      // Navigate to arena
       router.push("/arena")
     } catch {
       setError("Connection failed. Try again.")
