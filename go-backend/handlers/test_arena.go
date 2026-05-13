@@ -635,7 +635,7 @@ func SubmitTestAttempt(c *gin.Context) {
 	}
 
 	// Prevent double-submit (checked inside transaction)
-	if !attempt.SubmittedAt.IsZero() {
+	if attempt.SubmittedAt != nil {
 		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Attempt already submitted"})
 		return
@@ -722,7 +722,7 @@ func SubmitTestAttempt(c *gin.Context) {
 	attempt.Score = totalScore
 	attempt.TotalQuestions = len(questions)
 	attempt.TimeTaken = int(time.Since(attempt.StartedAt).Seconds())
-	attempt.SubmittedAt = submittedAt
+	attempt.SubmittedAt = &submittedAt
 	attempt.IsAutoSubmitted = isAutoSubmitted
 
 	// Post-commit side effects (async, non-blocking)
@@ -764,7 +764,7 @@ func GetAttemptStatus(c *gin.Context) {
 		remainingSeconds = 0
 	}
 
-	isSubmitted := !attempt.SubmittedAt.IsZero()
+	isSubmitted := attempt.SubmittedAt != nil
 
 	// Fetch questions (just ID, type, position)
 	var questions []models.TestQuestion

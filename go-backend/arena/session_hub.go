@@ -143,7 +143,7 @@ func (h *SessionHub) timerLoop() {
 		now := time.Now()
 		for _, attempt := range attemptRows {
 			// Skip already-submitted attempts
-			if !attempt.SubmittedAt.IsZero() {
+			if attempt.SubmittedAt != nil {
 				h.SendEvent(attempt.ID, "session_ended", map[string]interface{}{
 					"attemptId": attempt.ID,
 					"message":   "Test already submitted",
