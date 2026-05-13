@@ -14,12 +14,17 @@ export default function ArenaPage() {
   const [isTestActive, setIsTestActive] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [violationToast, setViolationToast] = useState<string | null>(null)
+  const [showFullscreenWarning, setShowFullscreenWarning] = useState(false)
+  const [violationCount, setViolationCount] = useState(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
   const submitHandlerRef = useRef<(() => void) | null>(null)
 
   // ── Anti-cheat wired into arena page ──
   const handleViolation = useCallback((type: string, count: number) => {
+    // Update violation count state
+    setViolationCount(count)
+
     // Show toast
     const label = type.replace(/_/g, " ").toUpperCase()
     setViolationToast(`⚠️ Violation ${count}/3: ${label}`)
@@ -40,17 +45,29 @@ export default function ArenaPage() {
     submitHandlerRef.current?.()
   }, [])
 
-  const { cleanup: antiCheatCleanup, warningLevel, showWarningModal, handleWarningAcknowledge } = useAntiCheat({
+  const handleShowFullscreenWarning = useCallback((show: boolean) => {
+    setShowFullscreenWarning(show)
+  }, [])
+
+  const { cleanup: antiCheatCleanup } = useAntiCheat({
     onViolation: handleViolation,
     onAutoSubmit: handleAutoSubmit,
+    onShowFullscreenWarning: handleShowFullscreenWarning,
     maxViolations: 3,
     enabled: isTestActive,
   })
 
-  // Handler for return to fullscreen button (now handled by warning modal)
+  // Handler for return to fullscreen button
   const handleReturnToFullscreen = useCallback(async () => {
-    handleWarningAcknowledge()
-  }, [handleWarningAcknowledge])
+    try {
+      await document.documentElement.requestFullscreen()
+      setShowFullscreenWarning(false)
+    } catch (e) {
+      // Could not enter fullscreen
+      // Button click IS a user gesture so this should succeed
+      console.error('Fullscreen failed:', e)
+    }
+  }, [])
 
   // ── beforeunload: warn during active test ──
   useEffect(() => {
@@ -121,48 +138,92 @@ export default function ArenaPage() {
           </div>
         )}
 
-        {showWarningModal && (
-          <div className="fixed inset-0 z-[10001] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
-            <div className="max-w-md w-full border border-red-500 bg-panel-bg p-8 shadow-2xl">
-              <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-6 animate-pulse" />
-              
-              {warningLevel === 1 && (
-                <>
-                  <h2 className="text-2xl font-bold text-red-400 mb-2 uppercase tracking-tight">
-                    ⚠️ Warning 1 of 3
-                  </h2>
-                  <p className="text-white mb-6 text-sm">
-                    You exited fullscreen mode. Return to fullscreen immediately or your test will be auto-submitted after 2 more violations.
-                  </p>
-                  <button
-                    onClick={handleReturnToFullscreen}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white py-4 font-mono text-xs font-bold tracking-widest transition-all"
-                  >
-                    RETURN TO FULLSCREEN
-                  </button>
-                </>
-              )}
-
-              {warningLevel === 2 && (
-                <>
-                  <h2 className="text-2xl font-bold text-orange-400 mb-2 uppercase tracking-tight">
-                    ⚠️ Warning 2 of 3 — FINAL WARNING
-                  </h2>
-                  <p className="text-white mb-6 text-sm">
-                    You switched tabs or left the test window. This is your FINAL warning. One more violation will immediately auto-submit your test.
-                  </p>
-                  <button
-                    onClick={handleWarningAcknowledge}
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 font-mono text-xs font-bold tracking-widest transition-all"
-                  >
-                    I UNDERSTAND — CONTINUE TEST
-                  </button>
-                </>
-              )}
+        {/* Fullscreen warning modal — OVERLAY ONLY, does not replace test UI */}
+        {showFullscreenWarning && (
+          <div 
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 99999,
+              backgroundColor: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div style={{
+              maxWidth: '500px',
+              padding: '2rem',
+              backgroundColor: '#1a1a1a',
+              border: '2px solid #ef4444',
+              borderRadius: '8px',
+              textAlign: 'center',
+            }}>
+              <AlertTriangle 
+                style={{
+                  width: '64px',
+                  height: '64px',
+                  color: '#ef4444',
+                  margin: '0 auto 1.5rem',
+                }}
+              />
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: 'bold',
+                color: '#ef4444',
+                marginBottom: '1rem',
+                textTransform: 'uppercase',
+              }}>
+                ⚠ FULLSCREEN REQUIRED
+              </h2>
+              <p style={{
+                color: '#ffffff',
+                marginBottom: '0.5rem',
+                fontSize: '1.125rem',
+                fontWeight: 'bold',
+              }}>
+                Violation {violationCount}/3
+              </p>
+              <p style={{
+                color: '#d1d5db',
+                marginBottom: '0.75rem',
+                fontSize: '0.875rem',
+              }}>
+                Return to fullscreen to continue your test.
+              </p>
+              <p style={{
+                color: '#fbbf24',
+                marginBottom: '1.5rem',
+                fontSize: '0.875rem',
+                fontWeight: 'bold',
+              }}>
+                Further tab switches will count as additional violations.
+              </p>
+              <button
+                onClick={handleReturnToFullscreen}
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 'bold',
+                  fontSize: '0.875rem',
+                  letterSpacing: '0.1em',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+              >
+                RETURN TO FULLSCREEN
+              </button>
             </div>
           </div>
         )}
 
+        {/* Test UI renders BEHIND the overlay always */}
         <TestArena
           onActiveChange={handleActiveChange}
           editorRef={editorRef}

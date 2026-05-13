@@ -198,6 +198,7 @@ func main() {
 		// Testcase management
 		admin.POST("/questions/:id/testcases", handlers.AddTestcase)
 		admin.DELETE("/testcases/:id", handlers.DeleteTestcase)
+		admin.DELETE("/questions/:id", handlers.DeleteQuestion)
 
 		// Dashboard analytics
 		admin.GET("/dashboard/stats", handlers.GetAdminDashboardStats)
