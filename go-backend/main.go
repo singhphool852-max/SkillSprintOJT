@@ -234,7 +234,7 @@ func main() {
 	// WebSocket route (outside /api — no JSON middleware needed)
 	r.GET("/ws/leaderboard/:testId", handlers.LeaderboardWS)
 	r.GET("/ws/arena/:attemptId", handlers.ArenaSessionWS)
-	r.GET("/ws/chat", middleware.JWTMiddleware(), handlers.ChatWebSocket)
+	r.GET("/ws/chat", handlers.ChatWebSocket)
 
 	// Chat Routes
 	api.POST("/chat/upload", middleware.JWTMiddleware(), handlers.UploadChatFile)

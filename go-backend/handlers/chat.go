@@ -13,6 +13,7 @@ import (
 
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/chat"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/middleware"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 
 	"github.com/gin-gonic/gin"
@@ -32,14 +33,31 @@ var chatUpgrader = websocket.Upgrader{
 
 // ChatWebSocket handles WebSocket connections for the chat.
 func ChatWebSocket(c *gin.Context) {
+	// Try to get userID from JWT middleware first
 	userID, exists := c.Get("userID")
+	
+	// If not found, try to extract from query parameter token
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
+		token := c.Query("token")
+		if token == "" {
+			log.Printf("[CHAT] No token provided in query or header")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		
+		// Validate token and extract userID
+		claims, err := middleware.ValidateToken(token)
+		if err != nil {
+			log.Printf("[CHAT] Invalid token: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+		userID = claims.ID
 	}
 
 	var user models.User
 	if err := database.DB.Where("id = ?", userID).First(&user).Error; err != nil {
+		log.Printf("[CHAT] User not found: %v", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -50,6 +68,7 @@ func ChatWebSocket(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[CHAT] WebSocket connection established for user: %s (%s)", user.Username, user.ID)
 	ChatHub.ServeWS(conn, user.ID, user.Username, user.AvatarURL)
 }
 
