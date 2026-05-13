@@ -239,6 +239,12 @@ func main() {
 	// Chat Routes
 	api.POST("/chat/upload", middleware.JWTMiddleware(), handlers.UploadChatFile)
 	api.GET("/chat/history", middleware.JWTMiddleware(), handlers.GetChatHistory)
+	api.GET("/chat/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status": "Chat backend is reachable",
+			"time":   time.Now().Format(time.RFC3339),
+		})
+	})
 
 	// Serve uploaded chat files statically
 	r.Static("/uploads/chat", "./uploads/chat")
