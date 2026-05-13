@@ -50,40 +50,44 @@ export function useChat(token: string | null) {
   const connect = useCallback(() => {
     if (!token || wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const wsUrl = API_URL.replace("http", "ws")
-    const ws = new WebSocket(`${wsUrl}/ws/chat?token=${token}`)
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'https://skillsprintojt.onrender.com'
+    const wsBase = apiBase.replace('https://', 'wss://').replace('http://', 'ws://')
+    const wsUrl = `${wsBase}/ws/chat?token=${token}`
+    
+    console.log('[CHAT] Connecting to:', wsUrl)
+    const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
-      console.log("[CHAT] WebSocket connected")
+      console.log('[CHAT] WebSocket connected to:', wsUrl)
       setIsConnected(true)
     }
 
     ws.onmessage = (event) => {
       try {
-        const data: ChatEvent = JSON.parse(event.data)
-
-        if (data.type === "message") {
-          setMessages((prev) => [...prev, data])
-        } else if (data.type === "user_joined" || data.type === "user_left") {
-          if (data.online_count !== undefined) {
-            setOnlineCount(data.online_count)
-          }
-        } else if (data.type === "online_count") {
-          if (data.online_count !== undefined) {
-            setOnlineCount(data.online_count)
+        const msg = JSON.parse(event.data)
+        
+        if (msg.type === 'message') {
+          setMessages((prev) => [...prev, msg])
+        }
+        if (msg.type === 'online_count') {
+          setOnlineCount(msg.online_count)
+        }
+        if (msg.type === 'user_joined' || msg.type === 'user_left') {
+          if (msg.online_count !== undefined) {
+            setOnlineCount(msg.online_count)
           }
         }
-      } catch (error) {
-        console.error("[CHAT] Failed to parse message:", error)
+      } catch (e) {
+        console.error('[CHAT] Failed to parse message:', e)
       }
     }
 
-    ws.onerror = (error) => {
-      console.error("[CHAT] WebSocket error:", error)
+    ws.onerror = (err) => {
+      console.error('[CHAT] WebSocket error:', err)
     }
 
-    ws.onclose = () => {
-      console.log("[CHAT] WebSocket closed, reconnecting in 3s...")
+    ws.onclose = (e) => {
+      console.log('[CHAT] WebSocket closed:', e.code, e.reason)
       setIsConnected(false)
       wsRef.current = null
 

@@ -72,21 +72,10 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
-			count := len(h.clients)
 			h.mu.Unlock()
+			h.broadcastOnlineCount()
 
-			// Broadcast user joined event
-			joinEvent := ChatEvent{
-				Type:        "user_joined",
-				UserID:      client.UserID,
-				Username:    client.Username,
-				Avatar:      client.Avatar,
-				Timestamp:   time.Now().Format(time.RFC3339),
-				OnlineCount: count,
-			}
-			h.broadcastEvent(joinEvent)
-
-			log.Printf("[CHAT] User joined: %s (%s), online: %d", client.Username, client.UserID, count)
+			log.Printf("[CHAT] User joined: %s (%s)", client.Username, client.UserID)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -94,20 +83,10 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				close(client.Send)
 			}
-			count := len(h.clients)
 			h.mu.Unlock()
+			h.broadcastOnlineCount()
 
-			// Broadcast user left event
-			leftEvent := ChatEvent{
-				Type:        "user_left",
-				UserID:      client.UserID,
-				Username:    client.Username,
-				Timestamp:   time.Now().Format(time.RFC3339),
-				OnlineCount: count,
-			}
-			h.broadcastEvent(leftEvent)
-
-			log.Printf("[CHAT] User left: %s (%s), online: %d", client.Username, client.UserID, count)
+			log.Printf("[CHAT] User left: %s (%s)", client.Username, client.UserID)
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
@@ -122,6 +101,36 @@ func (h *Hub) Run() {
 			h.mu.RUnlock()
 		}
 	}
+}
+
+// broadcastOnlineCount sends online count to all connected clients.
+func (h *Hub) broadcastOnlineCount() {
+	h.mu.RLock()
+	count := len(h.clients)
+	h.mu.RUnlock()
+
+	event := ChatEvent{
+		Type:        "online_count",
+		OnlineCount: count,
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+	
+	msg, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[CHAT] Failed to marshal online count: %v", err)
+		return
+	}
+
+	h.mu.RLock()
+	for client := range h.clients {
+		select {
+		case client.Send <- msg:
+		default:
+			close(client.Send)
+			delete(h.clients, client)
+		}
+	}
+	h.mu.RUnlock()
 }
 
 // broadcastEvent sends an event to all connected clients.
