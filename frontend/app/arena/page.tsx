@@ -47,6 +47,23 @@ export default function ArenaPage() {
     enabled: isTestActive,
   })
 
+  // Handler for return to fullscreen button
+  const handleReturnToFullscreen = useCallback(async () => {
+    try {
+      await document.documentElement.requestFullscreen()
+      // The fullscreenchange event in useAntiCheat will clear showFullscreenWarning
+      // But add a fallback check after a short delay
+      setTimeout(() => {
+        if (document.fullscreenElement) {
+          // Force re-render if needed by checking the hook state
+          console.log('[Arena] Fullscreen re-entered successfully')
+        }
+      }, 500)
+    } catch (err) {
+      console.error('[Arena] Failed to re-enter fullscreen:', err)
+    }
+  }, [])
+
   // ── beforeunload: warn during active test ──
   useEffect(() => {
     if (!isTestActive) return
@@ -128,7 +145,7 @@ export default function ArenaPage() {
                 You must return to fullscreen mode to continue your session.
               </p>
               <button
-                onClick={() => document.documentElement.requestFullscreen().catch(() => {})}
+                onClick={handleReturnToFullscreen}
                 className="w-full bg-neon-cyan/90 hover:bg-neon-cyan text-deep-bg py-4 font-mono text-xs font-bold tracking-[0.2em] transition-all"
               >
                 RETURN TO FULLSCREEN
