@@ -2,19 +2,10 @@
 
 import { useEffect, useRef, useCallback, useState } from "react"
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Anti-Cheat Hook (REWRITTEN FOR ISOLATION)
-// ─────────────────────────────────────────────────────────────────────────────
-
 type ViolationType =
   | "fullscreen_exit"
   | "tab_switch"
   | "window_blur"
-  | "copy_blocked"
-  | "paste_blocked"
-  | "cut_blocked"
-  | "contextmenu_blocked"
-  | "keyboard_shortcut"
 
 interface UseAntiCheatProps {
   onViolation: (type: string, count: number) => void
@@ -25,7 +16,9 @@ interface UseAntiCheatProps {
 
 interface UseAntiCheatReturn {
   violationCount: number
-  showFullscreenWarning: boolean
+  warningLevel: number
+  showWarningModal: boolean
+  handleWarningAcknowledge: () => void
   cleanup: () => void
 }
 
@@ -35,15 +28,16 @@ export function useAntiCheat({
   maxViolations = 3,
   enabled = true,
 }: UseAntiCheatProps): UseAntiCheatReturn {
-  // RULE 1 & 6: Use useRef for all mutable state inside hook, NO module-level variables
+  // CRITICAL: Use useRef for violation count to avoid stale closure bug
   const violationCountRef = useRef(0)
   const isArmedRef = useRef(false)
   const lastViolationTimeRef = useRef(0)
-  const cleanupFnsRef = useRef<Array<() => void>>([])
+  const isShowingWarningRef = useRef(false)
   
-  const [showFullscreenWarning, setShowFullscreenWarning] = useState(false)
+  const [warningLevel, setWarningLevel] = useState(0)
+  const [showWarningModal, setShowWarningModal] = useState(false)
 
-  // Stable refs for callbacks to avoid dependency chain complexity
+  // Stable refs for callbacks
   const onViolationRef = useRef(onViolation)
   const onAutoSubmitRef = useRef(onAutoSubmit)
   onViolationRef.current = onViolation
@@ -53,37 +47,67 @@ export function useAntiCheat({
   const addViolation = useCallback((type: ViolationType) => {
     if (!isArmedRef.current) return
 
-    // Debounce: ignore violations within 1.5s
+    // Debounce: ignore violations within 1 second
     const now = Date.now()
-    if (now - lastViolationTimeRef.current < 1500) return
+    if (now - lastViolationTimeRef.current < 1000) return
     lastViolationTimeRef.current = now
 
     violationCountRef.current += 1
     const count = violationCountRef.current
+
+    console.log(`[AntiCheat] Violation ${count}/${maxViolations}: ${type}`)
+
+    // Always log to backend
     onViolationRef.current(type, count)
 
-    if (count >= maxViolations) {
-      // Auto-submit after brief delay
+    if (count === 1) {
+      // First violation - show warning 1
+      setWarningLevel(1)
+      setShowWarningModal(true)
+      isShowingWarningRef.current = true
+    } else if (count === 2) {
+      // Second violation - show warning 2 (final warning)
+      setWarningLevel(2)
+      setShowWarningModal(true)
+      isShowingWarningRef.current = true
+    } else if (count >= maxViolations) {
+      // Third violation - AUTO SUBMIT IMMEDIATELY
+      setShowWarningModal(false)
+      isShowingWarningRef.current = false
+      console.log('[AntiCheat] Max violations reached - auto-submitting')
+      
+      // Brief delay to show final toast, then auto-submit
       setTimeout(() => {
         onAutoSubmitRef.current()
-        // Final cleanup
-        cleanup()
-      }, 1000)
+      }, 500)
     }
   }, [maxViolations])
 
-  // RULE 7: Cleanup function removes exactly the listeners this instance added
+  // ── WARNING MODAL ACKNOWLEDGE ──
+  const handleWarningAcknowledge = useCallback(() => {
+    setShowWarningModal(false)
+    isShowingWarningRef.current = false
+    
+    // If warning 1 (fullscreen exit), request fullscreen again
+    if (warningLevel === 1 && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.warn('[AntiCheat] Failed to re-enter fullscreen:', err)
+      })
+    }
+  }, [warningLevel])
+
+  // ── CLEANUP ──
   const cleanup = useCallback(() => {
     isArmedRef.current = false
-    cleanupFnsRef.current.forEach(fn => fn())
-    cleanupFnsRef.current = []
+    setShowWarningModal(false)
+    isShowingWarningRef.current = false
     
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {})
     }
   }, [])
 
-  // RULE 8: Initial fullscreen request per component mount
+  // ── INITIAL FULLSCREEN REQUEST ──
   useEffect(() => {
     if (!enabled) return
 
@@ -95,10 +119,11 @@ export function useAntiCheat({
         // Grace period before arming to avoid false triggers
         setTimeout(() => {
           isArmedRef.current = true
+          console.log('[AntiCheat] Armed and monitoring')
         }, 1500)
       } catch (err) {
         console.warn("[AntiCheat] Fullscreen request failed:", err)
-        // Arm anyway so focus monitoring works
+        // Arm anyway so monitoring works
         setTimeout(() => {
           isArmedRef.current = true
         }, 2000)
@@ -106,178 +131,56 @@ export function useAntiCheat({
     }
 
     requestFS()
-
-    return () => {
-      // If we are unmounting, we should ideally exit fullscreen if we were the one who requested it
-      // but in Arena, we might be switching views. The cleanup() call from parent handles this.
-    }
   }, [enabled])
 
-  // RULE 4: Fullscreen change handler isolation and re-prompt
+  // ── FULLSCREEN CHANGE HANDLER ──
   useEffect(() => {
     if (!enabled) return
 
     const handleFullscreenChange = () => {
-      console.log('[AntiCheat] Fullscreen change detected, fullscreenElement:', !!document.fullscreenElement)
-      
+      // Ignore fullscreen changes caused by warning modal
+      if (isShowingWarningRef.current) {
+        console.log('[AntiCheat] Fullscreen change ignored (warning modal active)')
+        return
+      }
+
       if (!document.fullscreenElement && isArmedRef.current) {
-        // Exited fullscreen - show warning
-        console.log('[AntiCheat] Exited fullscreen - showing warning')
+        // Exited fullscreen - violation
+        console.log('[AntiCheat] Fullscreen exit detected')
         addViolation("fullscreen_exit")
-        setShowFullscreenWarning(true)
       } else if (document.fullscreenElement) {
-        // Entered fullscreen - hide warning
-        console.log('[AntiCheat] Entered fullscreen - hiding warning')
-        setShowFullscreenWarning(false)
+        // Entered fullscreen - clear any warnings
+        console.log('[AntiCheat] Fullscreen entered')
       }
     }
 
     document.addEventListener("fullscreenchange", handleFullscreenChange)
-    const removeListener = () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
-    cleanupFnsRef.current.push(removeListener)
-
-    return removeListener
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
   }, [enabled, addViolation])
 
-  // RULE 5: Visibility and Blur isolation
+  // ── VISIBILITY CHANGE HANDLER (tab switch) ──
   useEffect(() => {
     if (!enabled) return
 
     const handleVisibilityChange = () => {
-      if (document.hidden && isArmedRef.current) {
+      if (document.hidden && isArmedRef.current && !isShowingWarningRef.current) {
+        console.log('[AntiCheat] Tab switch detected')
         addViolation("tab_switch")
       }
     }
 
-    const handleBlur = () => {
-      if (isArmedRef.current) {
-        addViolation("window_blur")
-      }
-    }
-
     document.addEventListener("visibilitychange", handleVisibilityChange)
-    window.addEventListener("blur", handleBlur)
-
-    const removeListeners = () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      window.removeEventListener("blur", handleBlur)
-    }
-    cleanupFnsRef.current.push(removeListeners)
-
-    return removeListeners
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [enabled, addViolation])
 
-  // ── Keyboard & Context Menu isolation ──
-  useEffect(() => {
-    if (!enabled) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isArmedRef.current) return
-      const ctrl = e.ctrlKey || e.metaKey
-
-      // RULE: Only intercept if Ctrl/Meta/F12 is involved. Plain characters must pass.
-      if (!ctrl && e.key !== "F12" && !e.altKey) return
-
-      // F12
-      if (e.key === "F12") {
-        e.preventDefault()
-        addViolation("keyboard_shortcut")
-        return
-      }
-
-      if (ctrl) {
-        // Ctrl+Shift+I / Ctrl+Shift+J (DevTools)
-        if (e.shiftKey && /^[ij]$/i.test(e.key)) {
-          e.preventDefault()
-          addViolation("keyboard_shortcut")
-          return
-        }
-        // Ctrl+C, Ctrl+V, Ctrl+X
-        if (/^[cvx]$/i.test(e.key)) {
-          e.preventDefault()
-          // violation logged by clipboard events
-          return
-        }
-        // Ctrl+U, Ctrl+T, Ctrl+L, Ctrl+R, Ctrl+N, Ctrl+W
-        if (/^[utlrnw]$/i.test(e.key)) {
-          e.preventDefault()
-          addViolation("keyboard_shortcut")
-          return
-        }
-        // Ctrl+Tab
-        if (e.key === "Tab") {
-          e.preventDefault()
-          addViolation("keyboard_shortcut")
-          return
-        }
-      }
-
-      // Alt+Tab
-      if (e.altKey && e.key === "Tab") {
-        e.preventDefault()
-        addViolation("keyboard_shortcut")
-      }
-    }
-
-    const handleContextMenu = (e: MouseEvent) => {
-      if (isArmedRef.current) {
-        e.preventDefault()
-        addViolation("contextmenu_blocked")
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown, false)
-    document.addEventListener("contextmenu", handleContextMenu, true)
-
-    const removeListeners = () => {
-      window.removeEventListener("keydown", handleKeyDown, false)
-      document.removeEventListener("contextmenu", handleContextMenu, true)
-    }
-    cleanupFnsRef.current.push(removeListeners)
-
-    return removeListeners
-  }, [enabled, addViolation])
-
-  // ── Clipboard isolation ──
-  useEffect(() => {
-    if (!enabled) return
-
-    const handleCopy = (e: ClipboardEvent) => {
-      if (isArmedRef.current) {
-        e.preventDefault()
-        addViolation("copy_blocked")
-      }
-    }
-    const handlePaste = (e: ClipboardEvent) => {
-      if (isArmedRef.current) {
-        e.preventDefault()
-        addViolation("paste_blocked")
-      }
-    }
-    const handleCut = (e: ClipboardEvent) => {
-      if (isArmedRef.current) {
-        e.preventDefault()
-        addViolation("cut_blocked")
-      }
-    }
-
-    document.addEventListener("copy", handleCopy, true)
-    document.addEventListener("paste", handlePaste, true)
-    document.addEventListener("cut", handleCut, true)
-
-    const removeListeners = () => {
-      document.removeEventListener("copy", handleCopy, true)
-      document.removeEventListener("paste", handlePaste, true)
-      document.removeEventListener("cut", handleCut, true)
-    }
-    cleanupFnsRef.current.push(removeListeners)
-
-    return removeListeners
-  }, [enabled, addViolation])
+  // NOTE: Removed window blur listener to prevent false positives
+  // (clicking address bar, opening DevTools, etc.)
 
   return {
     violationCount: violationCountRef.current,
-    showFullscreenWarning,
+    warningLevel,
+    showWarningModal,
+    handleWarningAcknowledge,
     cleanup,
   }
 }

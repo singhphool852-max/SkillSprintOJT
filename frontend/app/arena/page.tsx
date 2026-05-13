@@ -40,29 +40,17 @@ export default function ArenaPage() {
     submitHandlerRef.current?.()
   }, [])
 
-  const { cleanup: antiCheatCleanup, showFullscreenWarning } = useAntiCheat({
+  const { cleanup: antiCheatCleanup, warningLevel, showWarningModal, handleWarningAcknowledge } = useAntiCheat({
     onViolation: handleViolation,
     onAutoSubmit: handleAutoSubmit,
     maxViolations: 3,
     enabled: isTestActive,
   })
 
-  // Handler for return to fullscreen button
+  // Handler for return to fullscreen button (now handled by warning modal)
   const handleReturnToFullscreen = useCallback(async () => {
-    try {
-      await document.documentElement.requestFullscreen()
-      // The fullscreenchange event in useAntiCheat will clear showFullscreenWarning
-      // But add a fallback check after a short delay
-      setTimeout(() => {
-        if (document.fullscreenElement) {
-          // Force re-render if needed by checking the hook state
-          console.log('[Arena] Fullscreen re-entered successfully')
-        }
-      }, 500)
-    } catch (err) {
-      console.error('[Arena] Failed to re-enter fullscreen:', err)
-    }
-  }, [])
+    handleWarningAcknowledge()
+  }, [handleWarningAcknowledge])
 
   // ── beforeunload: warn during active test ──
   useEffect(() => {
@@ -133,23 +121,44 @@ export default function ArenaPage() {
           </div>
         )}
 
-        {showFullscreenWarning && (
+        {showWarningModal && (
           <div className="fixed inset-0 z-[10001] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
-            <div className="max-w-md w-full border border-panel-border bg-panel-bg p-8 shadow-2xl">
-              <AlertTriangle className="h-16 w-16 text-neon-pink mx-auto mb-6 animate-pulse-glow" />
-              <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">
-                Fullscreen <span className="text-neon-pink text-glow-pink">Required</span>
-              </h2>
-              <p className="text-sm text-muted-foreground mb-8">
-                Exiting fullscreen is a violation of the test policy. 
-                You must return to fullscreen mode to continue your session.
-              </p>
-              <button
-                onClick={handleReturnToFullscreen}
-                className="w-full bg-neon-cyan/90 hover:bg-neon-cyan text-deep-bg py-4 font-mono text-xs font-bold tracking-[0.2em] transition-all"
-              >
-                RETURN TO FULLSCREEN
-              </button>
+            <div className="max-w-md w-full border border-red-500 bg-panel-bg p-8 shadow-2xl">
+              <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-6 animate-pulse" />
+              
+              {warningLevel === 1 && (
+                <>
+                  <h2 className="text-2xl font-bold text-red-400 mb-2 uppercase tracking-tight">
+                    ⚠️ Warning 1 of 3
+                  </h2>
+                  <p className="text-white mb-6 text-sm">
+                    You exited fullscreen mode. Return to fullscreen immediately or your test will be auto-submitted after 2 more violations.
+                  </p>
+                  <button
+                    onClick={handleReturnToFullscreen}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white py-4 font-mono text-xs font-bold tracking-widest transition-all"
+                  >
+                    RETURN TO FULLSCREEN
+                  </button>
+                </>
+              )}
+
+              {warningLevel === 2 && (
+                <>
+                  <h2 className="text-2xl font-bold text-orange-400 mb-2 uppercase tracking-tight">
+                    ⚠️ Warning 2 of 3 — FINAL WARNING
+                  </h2>
+                  <p className="text-white mb-6 text-sm">
+                    You switched tabs or left the test window. This is your FINAL warning. One more violation will immediately auto-submit your test.
+                  </p>
+                  <button
+                    onClick={handleWarningAcknowledge}
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 font-mono text-xs font-bold tracking-widest transition-all"
+                  >
+                    I UNDERSTAND — CONTINUE TEST
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
