@@ -630,6 +630,13 @@ func GenerateTrainingSession(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[GENERATE] received: %+v", req)
+
+	if strings.TrimSpace(req.Topic) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Topic specification required"})
+		return
+	}
+
 	log.Printf("[AI_GEN_ROUTE] Hit topic=%q difficulty=%q count=%d", req.Topic, req.Difficulty, req.Count)
 
 	requestedCount := req.Count
