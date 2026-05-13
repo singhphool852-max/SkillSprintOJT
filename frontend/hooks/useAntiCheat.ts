@@ -1,30 +1,29 @@
 "use client"
 
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useEffect, useRef, useCallback } from "react"
 
 type ViolationType =
   | "fullscreen_exit"
   | "tab_switch"
   | "window_blur"
+  | "blocked_key"
 
 interface UseAntiCheatProps {
   onViolation: (type: string, count: number) => void
   onAutoSubmit: () => void
+  onShowFullscreenWarning: (show: boolean) => void
   maxViolations?: number
   enabled?: boolean
 }
 
 interface UseAntiCheatReturn {
-  violationCount: number
-  warningLevel: number
-  showWarningModal: boolean
-  handleWarningAcknowledge: () => void
   cleanup: () => void
 }
 
 export function useAntiCheat({
   onViolation,
   onAutoSubmit,
+  onShowFullscreenWarning,
   maxViolations = 3,
   enabled = true,
 }: UseAntiCheatProps): UseAntiCheatReturn {
@@ -32,24 +31,22 @@ export function useAntiCheat({
   const violationCountRef = useRef(0)
   const isArmedRef = useRef(false)
   const lastViolationTimeRef = useRef(0)
-  const isShowingWarningRef = useRef(false)
   
-  const [warningLevel, setWarningLevel] = useState(0)
-  const [showWarningModal, setShowWarningModal] = useState(false)
-
   // Stable refs for callbacks
   const onViolationRef = useRef(onViolation)
   const onAutoSubmitRef = useRef(onAutoSubmit)
+  const onShowFullscreenWarningRef = useRef(onShowFullscreenWarning)
   onViolationRef.current = onViolation
   onAutoSubmitRef.current = onAutoSubmit
+  onShowFullscreenWarningRef.current = onShowFullscreenWarning
 
   // ── VIOLATION HANDLER ──
   const addViolation = useCallback((type: ViolationType) => {
     if (!isArmedRef.current) return
 
-    // Debounce: ignore violations within 1 second
+    // Debounce: ignore violations within 500ms
     const now = Date.now()
-    if (now - lastViolationTimeRef.current < 1000) return
+    if (now - lastViolationTimeRef.current < 500) return
     lastViolationTimeRef.current = now
 
     violationCountRef.current += 1
@@ -60,47 +57,18 @@ export function useAntiCheat({
     // Always log to backend
     onViolationRef.current(type, count)
 
-    if (count === 1) {
-      // First violation - show warning 1
-      setWarningLevel(1)
-      setShowWarningModal(true)
-      isShowingWarningRef.current = true
-    } else if (count === 2) {
-      // Second violation - show warning 2 (final warning)
-      setWarningLevel(2)
-      setShowWarningModal(true)
-      isShowingWarningRef.current = true
-    } else if (count >= maxViolations) {
-      // Third violation - AUTO SUBMIT IMMEDIATELY
-      setShowWarningModal(false)
-      isShowingWarningRef.current = false
+    // Auto-submit on max violations
+    if (count >= maxViolations) {
       console.log('[AntiCheat] Max violations reached - auto-submitting')
-      
-      // Brief delay to show final toast, then auto-submit
-      setTimeout(() => {
-        onAutoSubmitRef.current()
-      }, 500)
+      onAutoSubmitRef.current()
+      cleanup()
     }
   }, [maxViolations])
-
-  // ── WARNING MODAL ACKNOWLEDGE ──
-  const handleWarningAcknowledge = useCallback(() => {
-    setShowWarningModal(false)
-    isShowingWarningRef.current = false
-    
-    // If warning 1 (fullscreen exit), request fullscreen again
-    if (warningLevel === 1 && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => {
-        console.warn('[AntiCheat] Failed to re-enter fullscreen:', err)
-      })
-    }
-  }, [warningLevel])
 
   // ── CLEANUP ──
   const cleanup = useCallback(() => {
     isArmedRef.current = false
-    setShowWarningModal(false)
-    isShowingWarningRef.current = false
+    onShowFullscreenWarningRef.current(false)
     
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {})
@@ -138,19 +106,27 @@ export function useAntiCheat({
     if (!enabled) return
 
     const handleFullscreenChange = () => {
-      // Ignore fullscreen changes caused by warning modal
-      if (isShowingWarningRef.current) {
-        console.log('[AntiCheat] Fullscreen change ignored (warning modal active)')
-        return
-      }
-
       if (!document.fullscreenElement && isArmedRef.current) {
-        // Exited fullscreen - violation
-        console.log('[AntiCheat] Fullscreen exit detected')
-        addViolation("fullscreen_exit")
+        // Exited fullscreen - try to auto re-enter immediately
+        console.log('[AntiCheat] Fullscreen exit detected - attempting auto re-enter')
+        
+        document.documentElement.requestFullscreen()
+          .then(() => {
+            // Success - fullscreen restored automatically, no violation needed
+            console.log('[AntiCheat] Auto re-enter fullscreen succeeded')
+            onShowFullscreenWarningRef.current(false)
+          })
+          .catch(() => {
+            // Browser blocked auto fullscreen (requires user gesture)
+            // Count as violation AND show warning button
+            console.log('[AntiCheat] Auto re-enter failed - counting violation and showing warning')
+            addViolation("fullscreen_exit")
+            onShowFullscreenWarningRef.current(true)
+          })
       } else if (document.fullscreenElement) {
-        // Entered fullscreen - clear any warnings
+        // Entered fullscreen - hide warning
         console.log('[AntiCheat] Fullscreen entered')
+        onShowFullscreenWarningRef.current(false)
       }
     }
 
@@ -163,9 +139,11 @@ export function useAntiCheat({
     if (!enabled) return
 
     const handleVisibilityChange = () => {
-      if (document.hidden && isArmedRef.current && !isShowingWarningRef.current) {
+      if (document.hidden && isArmedRef.current) {
         console.log('[AntiCheat] Tab switch detected')
         addViolation("tab_switch")
+        // Do NOT pause counting or show blocking modal
+        // Just count and continue
       }
     }
 
@@ -173,14 +151,70 @@ export function useAntiCheat({
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [enabled, addViolation])
 
-  // NOTE: Removed window blur listener to prevent false positives
-  // (clicking address bar, opening DevTools, etc.)
+  // ── WINDOW BLUR HANDLER (Alt+Tab) ──
+  useEffect(() => {
+    if (!enabled) return
+
+    const handleBlur = () => {
+      if (isArmedRef.current) {
+        console.log('[AntiCheat] Window blur detected')
+        addViolation("window_blur")
+        // Keep counting, do not pause
+      }
+    }
+
+    window.addEventListener("blur", handleBlur)
+    return () => window.removeEventListener("blur", handleBlur)
+  }, [enabled, addViolation])
+
+  // ── BLOCKED KEYS HANDLER ──
+  useEffect(() => {
+    if (!enabled) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isArmedRef.current) return
+
+      // Block common cheating keys
+      const blockedKeys = [
+        'F12', // DevTools
+        'I', // Ctrl+Shift+I (DevTools)
+        'J', // Ctrl+Shift+J (Console)
+        'C', // Ctrl+Shift+C (Inspect)
+        'U', // Ctrl+U (View Source)
+      ]
+
+      const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey
+      const isCtrlU = (e.ctrlKey || e.metaKey) && e.key === 'U'
+
+      if (
+        e.key === 'F12' ||
+        (isCtrlShift && ['I', 'J', 'C'].includes(e.key.toUpperCase())) ||
+        isCtrlU
+      ) {
+        e.preventDefault()
+        addViolation("blocked_key")
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [enabled, addViolation])
+
+  // ── CONTEXT MENU BLOCK ──
+  useEffect(() => {
+    if (!enabled) return
+
+    const handleContextMenu = (e: MouseEvent) => {
+      if (isArmedRef.current) {
+        e.preventDefault()
+      }
+    }
+
+    document.addEventListener("contextmenu", handleContextMenu)
+    return () => document.removeEventListener("contextmenu", handleContextMenu)
+  }, [enabled])
 
   return {
-    violationCount: violationCountRef.current,
-    warningLevel,
-    showWarningModal,
-    handleWarningAcknowledge,
     cleanup,
   }
 }
