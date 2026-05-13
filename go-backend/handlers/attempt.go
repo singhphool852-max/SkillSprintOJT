@@ -142,6 +142,7 @@ func SubmitAttempt(c *gin.Context) {
 		attemptAnswers = append(attemptAnswers, ans)
 	}
 
+	now := time.Now()
 	attempt := models.Attempt{
 		ID:             attemptID,
 		UserID:         userID.(string),
@@ -149,7 +150,7 @@ func SubmitAttempt(c *gin.Context) {
 		Score:          totalScore,
 		TotalQuestions: len(req.Answers),
 		StartedAt:      req.StartedAt,
-		CompletedAt:    time.Now(),
+		CompletedAt:    &now,
 	}
 
 	// Begin transaction

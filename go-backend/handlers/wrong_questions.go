@@ -201,6 +201,7 @@ func updateUserTopicStats(userID string, testID string) {
 	var existing models.UserTopicStats
 	if err := database.DB.Where("userId = ? AND topicId = ?", userID, test.TopicID).First(&existing).Error; err != nil {
 		// Create new
+		now := time.Now()
 		database.DB.Create(&models.UserTopicStats{
 			ID:              uuid.New().String(),
 			UserID:          userID,
@@ -212,7 +213,7 @@ func updateUserTopicStats(userID string, testID string) {
 			TotalSkipped:    s.Skipped,
 			AccuracyPercent: accuracy,
 			WeakLevel:       weakLevel,
-			LastAttemptedAt: time.Now(),
+			LastAttemptedAt: &now,
 		})
 	} else {
 		// Update existing
