@@ -108,6 +108,62 @@ export default function AdminTestDetailPage() {
   const [tcHidden, setTcHidden] = useState(false)
   const [tcCreating, setTcCreating] = useState(false)
 
+  // ── Delete handlers ──
+  const handleDeleteTestcase = async (testcaseId: string) => {
+    if (!confirm('Delete this testcase? This action cannot be undone.')) return
+    
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API}/api/admin/testcases/${testcaseId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      })
+      
+      if (res.ok) {
+        // Remove from local state immediately
+        setQuestions(prev => prev.map(q => ({
+          ...q,
+          testCases: q.testCases?.filter(tc => tc.id !== testcaseId) || null
+        })))
+      } else {
+        alert('Failed to delete testcase')
+      }
+    } catch (e) {
+      console.error('Delete testcase failed:', e)
+      alert('Failed to delete testcase')
+    }
+  }
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    if (!confirm('Delete this question and all its testcases? This action cannot be undone.')) return
+    
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API}/api/admin/questions/${questionId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      })
+      
+      if (res.ok) {
+        // Remove from local state immediately
+        setQuestions(prev => prev.filter(q => q.id !== questionId))
+      } else {
+        alert('Failed to delete question')
+      }
+    } catch (e) {
+      console.error('Delete question failed:', e)
+      alert('Failed to delete question')
+    }
+  }
+
   const fetchTest = useCallback(async () => {
     try {
       // 1. Fetch test metadata deeply (includes questions, options, details via backend Preload)
@@ -527,13 +583,23 @@ export default function AdminTestDetailPage() {
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setTcQuestionId(tcQuestionId === q.id ? null : q.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[9px] tracking-widest border border-panel-border text-muted-foreground hover:border-neon-cyan/40 hover:text-neon-cyan transition-all"
-                >
-                  <Plus className="h-3 w-3" />
-                  ADD TESTCASE
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleDeleteQuestion(q.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[9px] tracking-widest border border-red-500/50 text-red-500 hover:bg-red-500/20 hover:border-red-500 transition-all"
+                    title="Delete question"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    DELETE QUESTION
+                  </button>
+                  <button
+                    onClick={() => setTcQuestionId(tcQuestionId === q.id ? null : q.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[9px] tracking-widest border border-panel-border text-muted-foreground hover:border-neon-cyan/40 hover:text-neon-cyan transition-all"
+                  >
+                    <Plus className="h-3 w-3" />
+                    ADD TESTCASE
+                  </button>
+                </div>
               </div>
 
               {/* Question body */}
@@ -585,7 +651,7 @@ export default function AdminTestDetailPage() {
                     </span>
                     <div className="flex flex-col gap-1.5">
                       {q.testCases.map((tc, tci) => (
-                        <div key={tc.id} className="grid grid-cols-[2fr_2fr_auto] gap-3 items-start border border-panel-border/50 bg-deep-bg/30 px-3 py-2">
+                        <div key={tc.id} className="grid grid-cols-[2fr_2fr_auto_auto] gap-3 items-start border border-panel-border/50 bg-deep-bg/30 px-3 py-2">
                           <div>
                             <span className="font-mono text-[8px] tracking-wider text-muted-foreground">INPUT</span>
                             <pre className="font-mono text-[11px] text-foreground whitespace-pre-wrap mt-0.5">{tc.input}</pre>
@@ -604,6 +670,15 @@ export default function AdminTestDetailPage() {
                                 <Eye className="h-3 w-3" /> VISIBLE
                               </span>
                             )}
+                          </div>
+                          <div className="flex items-center pt-2">
+                            <button
+                              onClick={() => handleDeleteTestcase(tc.id)}
+                              className="text-red-500 hover:text-red-700 transition-colors"
+                              title="Delete testcase"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </div>
                       ))}
