@@ -5,13 +5,13 @@ import (
 )
 
 type Attempt struct {
-	ID             string    `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
-	UserID         string    `gorm:"type:varchar(191);index;column:userId" json:"userId"`
-	QuizID         string    `gorm:"type:varchar(191);index;column:quizId" json:"quizId"`
-	Score          int       `gorm:"column:score" json:"score"`
-	TotalQuestions int       `gorm:"column:totalQuestions" json:"totalQuestions"`
-	StartedAt      time.Time `gorm:"column:startedAt" json:"startedAt"`
-	CompletedAt    time.Time `gorm:"column:completedAt" json:"completedAt"`
+	ID             string     `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	UserID         string     `gorm:"type:varchar(191);index;column:userId" json:"userId"`
+	QuizID         string     `gorm:"type:varchar(191);index;column:quizId" json:"quizId"`
+	Score          int        `gorm:"column:score" json:"score"`
+	TotalQuestions int        `gorm:"column:totalQuestions" json:"totalQuestions"`
+	StartedAt      time.Time  `gorm:"column:startedAt" json:"startedAt"`
+	CompletedAt    *time.Time `gorm:"column:completedAt" json:"completedAt"`
 
 	User User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 	Quiz Quiz `gorm:"foreignKey:QuizID;constraint:OnDelete:CASCADE" json:"quiz,omitempty"`

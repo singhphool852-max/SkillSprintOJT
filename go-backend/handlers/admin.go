@@ -68,7 +68,7 @@ func CreateTest(c *gin.Context) {
 		Description:     req.Description,
 		TopicID:         req.TopicID,
 		Difficulty:      req.Difficulty,
-		StartTime:       req.StartTime,
+		StartTime:       &req.StartTime,
 		DurationSeconds: req.DurationSeconds,
 		IsPublished:     false,
 		CreatedBy:       userID.(string),
@@ -166,7 +166,7 @@ func ActivateTest(c *gin.Context) {
 	tx.Model(&models.Test{}).Where("1 = 1").Update("isActive", false)
 	tx.Model(&test).Updates(map[string]interface{}{
 		"isActive":  true,
-		"startTime": now,
+		"startTime": &now,
 	})
 	tx.Commit()
 
@@ -414,7 +414,7 @@ func UpdateTest(c *gin.Context) {
 		test.TopicID = *req.TopicID
 	}
 	if req.StartTime != nil {
-		test.StartTime = *req.StartTime
+		test.StartTime = req.StartTime
 	}
 	if req.DurationSeconds != nil {
 		test.DurationSeconds = *req.DurationSeconds

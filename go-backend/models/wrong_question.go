@@ -23,12 +23,12 @@ type UserWrongQuestion struct {
 	Verdict        string    `gorm:"column:verdict" json:"verdict"`                 // "wrong_answer", "time_limit", "skipped", "compile_error"
 	PointsLost     int       `gorm:"column:pointsLost" json:"pointsLost"`
 	PointsPossible int       `gorm:"column:pointsPossible" json:"pointsPossible"`
-	ReviewCount    int       `gorm:"column:reviewCount;default:0" json:"reviewCount"`
-	CorrectStreak  int       `gorm:"column:correctStreak;default:0" json:"correctStreak"` // Number of times answered correctly in training
-	WrongCount     int       `gorm:"column:wrongCount;default:1" json:"wrongCount"`       // Total times failed across all tests
-	LastReviewedAt time.Time `gorm:"column:lastReviewedAt" json:"lastReviewedAt"`
-	MasteredAt     time.Time `gorm:"column:masteredAt" json:"masteredAt"`
-	CreatedAt      time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	ReviewCount    int        `gorm:"column:reviewCount;default:0" json:"reviewCount"`
+	CorrectStreak  int        `gorm:"column:correctStreak;default:0" json:"correctStreak"` // Number of times answered correctly in training
+	WrongCount     int        `gorm:"column:wrongCount;default:1" json:"wrongCount"`       // Total times failed across all tests
+	LastReviewedAt *time.Time `gorm:"column:lastReviewedAt" json:"lastReviewedAt"`
+	MasteredAt     *time.Time `gorm:"column:masteredAt" json:"masteredAt"`
+	CreatedAt      time.Time  `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 
 	User     User         `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 	Question TestQuestion `gorm:"foreignKey:QuestionID" json:"question,omitempty"`
@@ -51,11 +51,11 @@ type UserTopicStats struct {
 	TotalAttempted  int       `gorm:"column:totalAttempted" json:"totalAttempted"`
 	TotalCorrect    int       `gorm:"column:totalCorrect" json:"totalCorrect"`
 	TotalWrong      int       `gorm:"column:totalWrong" json:"totalWrong"`
-	TotalSkipped    int       `gorm:"column:totalSkipped" json:"totalSkipped"`
-	AccuracyPercent float64   `gorm:"column:accuracyPercent" json:"accuracyPercent"`
-	WeakLevel       string    `gorm:"column:weakLevel" json:"weakLevel"` // "strong", "moderate", "weak", "critical"
-	LastAttemptedAt time.Time `gorm:"column:lastAttemptedAt" json:"lastAttemptedAt"`
-	UpdatedAt       time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+	TotalSkipped    int        `gorm:"column:totalSkipped" json:"totalSkipped"`
+	AccuracyPercent float64    `gorm:"column:accuracyPercent" json:"accuracyPercent"`
+	WeakLevel       string     `gorm:"column:weakLevel" json:"weakLevel"` // "strong", "moderate", "weak", "critical"
+	LastAttemptedAt *time.Time `gorm:"column:lastAttemptedAt" json:"lastAttemptedAt"`
+	UpdatedAt       time.Time  `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
 	User  User   `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 	Topic *Topic `gorm:"foreignKey:TopicID;constraint:OnDelete:CASCADE" json:"topic,omitempty"`

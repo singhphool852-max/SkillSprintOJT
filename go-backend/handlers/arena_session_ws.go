@@ -107,11 +107,15 @@ func ArenaSessionWS(c *gin.Context) {
 
 	// Send initial timer sync immediately
 	now := time.Now()
-	elapsed := now.Sub(attempt.Test.StartTime)
+	if attempt.Test.StartTime == nil {
+		log.Printf("arena ws: test has no start time for attempt %s", attemptID)
+		return
+	}
+	elapsed := now.Sub(*attempt.Test.StartTime)
 	remaining := attempt.Test.DurationSeconds - int(elapsed.Seconds())
 
 	status := "live"
-	if now.Before(attempt.Test.StartTime) {
+	if now.Before(*attempt.Test.StartTime) {
 		status = "upcoming"
 		remaining = attempt.Test.DurationSeconds
 	} else if remaining <= 0 {
