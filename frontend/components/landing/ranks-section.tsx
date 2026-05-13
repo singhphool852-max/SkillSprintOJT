@@ -5,12 +5,12 @@ import Link from "next/link"
 import { Crown, Flame, Shield, Skull, Star, Sword, Swords, Zap } from "lucide-react"
 
 const ranks = [
-  { name: "RECRUIT", icon: Shield, rating: "0 - 499", color: "neon-muted", border: "border-muted-foreground/20", glow: "shadow-[0_0_15px_rgba(107,107,138,0.2)]" },
-  { name: "WARRIOR", icon: Sword, rating: "500 - 999", color: "neon-cyan", border: "border-neon-cyan/20", glow: "shadow-[0_0_15px_rgba(0,240,255,0.2)]" },
-  { name: "ELITE", icon: Star, rating: "1000 - 1499", color: "neon-cyan", border: "border-neon-cyan/20", glow: "shadow-[0_0_15px_rgba(0,240,255,0.2)]" },
-  { name: "VETERAN", icon: Flame, rating: "1500 - 1999", color: "neon-yellow", border: "border-neon-yellow/20", glow: "shadow-[0_0_15px_rgba(255,184,0,0.2)]" },
-  { name: "CHAMPION", icon: Skull, rating: "2000 - 2499", color: "neon-pink", border: "border-neon-pink/20", glow: "shadow-[0_0_15px_rgba(255,45,111,0.2)]" },
-  { name: "APEX", icon: Crown, rating: "2500+", color: "neon-yellow", border: "border-neon-yellow/20", glow: "shadow-[0_0_15px_rgba(255,184,0,0.2)]" },
+  { name: "ROOKIE", icon: Shield, rating: "TOP 100%", color: "neon-muted", border: "border-muted-foreground/20", glow: "shadow-[0_0_15px_rgba(107,107,138,0.2)]" },
+  { name: "WARRIOR", icon: Sword, rating: "TOP 75%", color: "neon-cyan", border: "border-neon-cyan/20", glow: "shadow-[0_0_15px_rgba(0,240,255,0.2)]" },
+  { name: "ELITE", icon: Star, rating: "TOP 50%", color: "neon-cyan", border: "border-neon-cyan/20", glow: "shadow-[0_0_15px_rgba(0,240,255,0.2)]" },
+  { name: "VETERAN", icon: Flame, rating: "TOP 30%", color: "neon-yellow", border: "border-neon-yellow/20", glow: "shadow-[0_0_15px_rgba(255,184,0,0.2)]" },
+  { name: "CHAMPION", icon: Skull, rating: "TOP 15%", color: "neon-pink", border: "border-neon-pink/20", glow: "shadow-[0_0_15px_rgba(255,45,111,0.2)]" },
+  { name: "APEX", icon: Crown, rating: "TOP 5%", color: "neon-yellow", border: "border-neon-yellow/20", glow: "shadow-[0_0_15px_rgba(255,184,0,0.2)]" },
 ]
 
 export function RanksSection() {
