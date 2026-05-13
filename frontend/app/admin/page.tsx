@@ -61,6 +61,7 @@ export default function AdminTestsPage() {
   // AI Build Test state
   const [showAIModal, setShowAIModal] = useState(false)
   const [aiFile, setAiFile] = useState<File | null>(null)
+  const [aiTopicId, setAiTopicId] = useState("")
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
 
@@ -179,12 +180,18 @@ export default function AdminTestsPage() {
     e.preventDefault()
     if (!aiFile) return
 
+    if (!aiTopicId) {
+      setAiError("Please select a topic before generating")
+      return
+    }
+
     setAiGenerating(true)
     setAiError(null)
 
     try {
       const formData = new FormData()
       formData.append("file", aiFile)
+      formData.append("topicId", aiTopicId)
 
       const token = localStorage.getItem("token")
       const res = await fetch(`${API}/api/admin/ai/build-test`, {
@@ -200,6 +207,7 @@ export default function AdminTestsPage() {
         const data = await res.json()
         setShowAIModal(false)
         setAiFile(null)
+        setAiTopicId("")
         await fetchTests()
         
         // Redirect to edit page
@@ -520,6 +528,7 @@ export default function AdminTestsPage() {
                 onClick={() => {
                   setShowAIModal(false)
                   setAiFile(null)
+                  setAiTopicId("")
                   setAiError(null)
                 }}
                 className="absolute top-4 right-4 text-muted-foreground hover:text-neon-pink transition-colors"
@@ -540,6 +549,26 @@ export default function AdminTestsPage() {
               </p>
 
               <form onSubmit={handleAIBuildTest} className="space-y-6">
+                <div className="flex flex-col gap-3">
+                  <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
+                    SELECT TOPIC *
+                  </label>
+                  <select
+                    value={aiTopicId}
+                    onChange={(e) => {
+                      setAiTopicId(e.target.value)
+                      setAiError(null)
+                    }}
+                    required
+                    className="bg-deep-bg/80 border border-panel-border px-4 py-3 font-mono text-sm text-foreground focus:border-neon-cyan/50 focus:outline-none"
+                  >
+                    <option value="">— Select a Topic —</option>
+                    {topics.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="flex flex-col gap-3">
                   <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
                     UPLOAD FILE (PDF OR CSV)
@@ -591,6 +620,7 @@ export default function AdminTestsPage() {
                     onClick={() => {
                       setShowAIModal(false)
                       setAiFile(null)
+                      setAiTopicId("")
                       setAiError(null)
                     }}
                     className="px-5 py-2 font-mono text-[10px] tracking-widest text-muted-foreground hover:text-foreground transition-colors"
