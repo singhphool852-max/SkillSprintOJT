@@ -209,6 +209,9 @@ func main() {
 		// Test-specific analytics & attempt inspection
 		admin.GET("/tests/:id/attempts", handlers.GetTestAttemptsList)
 		admin.GET("/tests/:id/analytics", handlers.GetTestAnalytics)
+
+		// AI Test Builder
+		admin.POST("/ai/build-test", handlers.HandleAIBuildTest)
 	}
 
 

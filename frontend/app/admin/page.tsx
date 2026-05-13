@@ -55,9 +55,14 @@ export default function AdminTestsPage() {
   // Topics
   const [topics, setTopics] = useState<Topic[]>([])
 
-  // Publish/Activate loading per test
   const [publishLoading, setPublishLoading] = useState<string | null>(null)
   const [activateLoading, setActivateLoading] = useState<string | null>(null)
+
+  // AI Build Test state
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [aiFile, setAiFile] = useState<File | null>(null)
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   async function fetchTests() {
     try {
@@ -170,6 +175,47 @@ export default function AdminTestsPage() {
     }
   }
 
+  async function handleAIBuildTest(e: React.FormEvent) {
+    e.preventDefault()
+    if (!aiFile) return
+
+    setAiGenerating(true)
+    setAiError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", aiFile)
+
+      const token = localStorage.getItem("token")
+      const res = await fetch(`${API}/api/admin/ai/build-test`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: "include",
+        body: formData,
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setShowAIModal(false)
+        setAiFile(null)
+        await fetchTests()
+        
+        // Redirect to edit page
+        window.location.href = `/admin/tests/${data.testId}`
+      } else {
+        const error = await res.json()
+        setAiError(error.error || "Failed to generate test")
+      }
+    } catch (e) {
+      console.error("AI generation failed:", e)
+      setAiError("Network error. Please try again.")
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
   return (
     <div className="relative min-h-screen">
       <div className="absolute inset-0 grid-bg opacity-20" />
@@ -189,13 +235,22 @@ export default function AdminTestsPage() {
             </h1>
           </div>
 
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 bg-neon-pink/90 hover:bg-neon-pink px-5 py-2.5 font-mono text-[11px] font-bold tracking-widest text-white transition-all"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {showForm ? "CANCEL" : "CREATE TEST"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAIModal(true)}
+              className="flex items-center gap-2 border border-neon-cyan/50 bg-neon-cyan/10 hover:bg-neon-cyan/20 px-5 py-2.5 font-mono text-[11px] font-bold tracking-widest text-neon-cyan transition-all"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              AI BUILD TEST
+            </button>
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="flex items-center gap-2 bg-neon-pink/90 hover:bg-neon-pink px-5 py-2.5 font-mono text-[11px] font-bold tracking-widest text-white transition-all"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {showForm ? "CANCEL" : "CREATE TEST"}
+            </button>
+          </div>
         </div>
 
         {/* Create form */}
@@ -454,6 +509,114 @@ export default function AdminTestsPage() {
               </span>
             </div>
             <div className="h-px flex-1 bg-panel-border" />
+          </div>
+        )}
+
+        {/* AI Build Test Modal */}
+        {showAIModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="relative w-full max-w-lg border border-neon-cyan/30 bg-panel-bg p-8">
+              <button
+                onClick={() => {
+                  setShowAIModal(false)
+                  setAiFile(null)
+                  setAiError(null)
+                }}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-neon-pink transition-colors"
+              >
+                <Plus className="h-4 w-4 rotate-45" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-6">
+                <Zap className="h-5 w-5 text-neon-cyan animate-pulse-glow" />
+                <h2 className="text-xl font-bold tracking-tight text-foreground">
+                  AI BUILD TEST
+                </h2>
+              </div>
+
+              <p className="text-sm text-muted-foreground mb-6">
+                Upload a PDF or CSV file containing notes, MCQs, coding questions, or question banks. 
+                AI will automatically generate a complete draft test with questions, options, testcases, and more.
+              </p>
+
+              <form onSubmit={handleAIBuildTest} className="space-y-6">
+                <div className="flex flex-col gap-3">
+                  <label className="font-mono text-[9px] tracking-widest text-muted-foreground uppercase">
+                    UPLOAD FILE (PDF OR CSV)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".pdf,.csv"
+                      onChange={(e) => {
+                        setAiFile(e.target.files?.[0] || null)
+                        setAiError(null)
+                      }}
+                      required
+                      className="w-full bg-deep-bg/80 border border-panel-border px-4 py-3 font-mono text-sm text-foreground focus:border-neon-cyan/50 focus:outline-none file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-neon-cyan/20 file:text-neon-cyan file:font-mono file:text-xs file:tracking-wider"
+                    />
+                  </div>
+                  {aiFile && (
+                    <div className="flex items-center gap-2 text-xs text-neon-cyan">
+                      <FileText className="h-3 w-3" />
+                      <span className="font-mono">{aiFile.name}</span>
+                      <span className="text-muted-foreground">
+                        ({(aiFile.size / 1024).toFixed(1)} KB)
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {aiError && (
+                  <div className="border border-red-500/30 bg-red-500/10 px-4 py-3">
+                    <p className="font-mono text-xs text-red-400">{aiError}</p>
+                  </div>
+                )}
+
+                <div className="border-t border-panel-border pt-4">
+                  <div className="flex items-start gap-2 mb-4">
+                    <Shield className="h-4 w-4 text-neon-yellow shrink-0 mt-0.5" />
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>• Test will be created as <span className="text-neon-yellow">DRAFT</span> (not published)</p>
+                      <p>• You can review and edit before publishing</p>
+                      <p>• AI will generate questions from notes if needed</p>
+                      <p>• Testcases will be auto-generated for coding problems</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAIModal(false)
+                      setAiFile(null)
+                      setAiError(null)
+                    }}
+                    className="px-5 py-2 font-mono text-[10px] tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={aiGenerating || !aiFile}
+                    className="flex items-center gap-2 bg-neon-cyan/90 hover:bg-neon-cyan px-6 py-2 font-mono text-[11px] font-bold tracking-widest text-deep-bg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {aiGenerating ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        GENERATING...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-3.5 w-3.5" />
+                        GENERATE TEST
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>
