@@ -109,6 +109,8 @@ func (h *Hub) broadcastOnlineCount() {
 	count := len(h.clients)
 	h.mu.RUnlock()
 
+	log.Printf("[CHAT] Broadcasting online count: %d", count)
+
 	event := ChatEvent{
 		Type:        "online_count",
 		OnlineCount: count,
@@ -126,8 +128,7 @@ func (h *Hub) broadcastOnlineCount() {
 		select {
 		case client.Send <- msg:
 		default:
-			close(client.Send)
-			delete(h.clients, client)
+			log.Printf("[CHAT] Failed to send online count to client %s", client.Username)
 		}
 	}
 	h.mu.RUnlock()
@@ -219,6 +220,8 @@ func (c *Client) ReadPump() {
 			continue
 		}
 
+		log.Printf("[CHAT] Received message from %s: type=%s content=%s", c.Username, event.Type, event.Content)
+
 		// Ignore ping messages
 		if event.Type == "ping" {
 			continue
@@ -236,6 +239,8 @@ func (c *Client) ReadPump() {
 			log.Printf("[CHAT] Failed to marshal event: %v", err)
 			continue
 		}
+		
+		log.Printf("[CHAT] Broadcasting message from %s to all clients", c.Username)
 		c.Hub.Broadcast(data)
 	}
 }

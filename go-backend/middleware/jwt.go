@@ -24,6 +24,20 @@ type SessionPayload struct {
 	jwt.RegisteredClaims
 }
 
+// ValidateToken validates a JWT token string and returns the claims
+func ValidateToken(tokenString string) (*SessionPayload, error) {
+	claims := &SessionPayload{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return JWT_SECRET, nil
+	})
+
+	if err != nil || !token.Valid {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
 func JWTMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := ""
