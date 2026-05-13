@@ -18,15 +18,10 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Get token from cookie
+  // Get token from localStorage (not cookies since HttpOnly prevents JS access)
   useEffect(() => {
-    const getToken = () => {
-      const cookies = document.cookie.split("; ")
-      const authCookie = cookies.find((c) => c.startsWith("auth_token="))
-      return authCookie ? authCookie.split("=")[1] : null
-    }
-    const retrievedToken = getToken()
-    console.log('[CHAT] Token retrieved:', retrievedToken ? 'YES (length: ' + retrievedToken.length + ')' : 'NO')
+    const retrievedToken = localStorage.getItem('auth_token')
+    console.log('[CHAT] Token retrieved from localStorage:', retrievedToken ? 'YES (length: ' + retrievedToken.length + ')' : 'NO')
     console.log('[CHAT] API_URL:', API_URL)
     
     // Test if backend is reachable
