@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { saveSessionMetrics } from "@/lib/training-history"
 import { QuestionRenderer } from "./QuestionRenderer"
+import { SummaryDisplay } from "./SummaryDisplay"
 import { API_URL } from "@/lib/api-config"
 
 interface Question {
@@ -414,48 +415,16 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
       {/* Main content */}
       <div className="relative z-10 flex-1 flex flex-col items-center py-12 px-4 pb-32">
         {viewingSummary ? (
-          <div className="w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="border border-panel-border bg-panel-bg/40 p-8 lg:p-12 backdrop-blur-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                <Brain className="h-40 w-40" />
-              </div>
-              
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="h-8 w-8 flex items-center justify-center border border-neon-cyan text-neon-cyan bg-neon-cyan/5">
-                    <Info className="h-4 w-4" />
-                  </div>
-                  <span className="font-mono text-[10px] tracking-[0.3em] text-neon-cyan uppercase">
-                    SYNOPSIS EXTRACTED
-                  </span>
-                </div>
-
-                <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl mb-8">
-                  SESSION <span className="text-neon-cyan text-glow-cyan">SUMMARY</span>
-                </h2>
-
-                <div className="prose prose-invert max-w-none mb-12">
-                  <div className="bg-deep-bg/50 border border-panel-border p-6 font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                    {summary}
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <button 
-                    onClick={() => {
-                      setViewingSummary(false);
-                      setStartedAt(new Date());
-                      setLastQuestionSync(new Date());
-                    }}
-                    className="group relative flex items-center gap-3 border border-neon-cyan bg-neon-cyan/10 text-neon-cyan px-10 py-4 font-mono text-xs font-bold tracking-[0.3em] transition-all hover:bg-neon-cyan/20 hover:shadow-[0_0_25px_rgba(0,240,255,0.2)]"
-                  >
-                    START TRAINING
-                    <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SummaryDisplay 
+            summary={summary || ""} 
+            topic={topic}
+            difficulty={difficulty}
+            onStart={() => {
+              setViewingSummary(false);
+              setStartedAt(new Date());
+              setLastQuestionSync(new Date());
+            }}
+          />
         ) : evaluating ? (
           <div className="flex flex-col items-center justify-center min-h-[50vh] gap-6 text-center animate-in fade-in duration-500">
              <div className="relative h-20 w-20">
