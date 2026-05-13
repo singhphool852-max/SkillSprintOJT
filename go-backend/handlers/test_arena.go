@@ -745,12 +745,11 @@ func SubmitTestAttempt(c *gin.Context) {
 	attempt.SubmittedAt = &submittedAt
 	attempt.IsAutoSubmitted = isAutoSubmitted
 
-	// Post-commit side effects (async, non-blocking)
-	go func() {
-		computeAndSaveResult(attempt) // persist TestResult
-		extractWrongQuestions(attempt) // track wrong answers + update topic stats
-	}()
-
+	// Post-commit side effects
+	// We run these synchronously now to ensure Recovery Mode has data ready before the redirect.
+	computeAndSaveResult(attempt) // persist TestResult
+	extractWrongQuestions(attempt) // track wrong answers + update topic stats
+	
 	// Broadcast updated leaderboard (after commit, non-blocking)
 	broadcastLeaderboard(attempt.TestID)
 

@@ -136,13 +136,17 @@ export default function TrainPage() {
   const [aiDebugInfo] = useState<{ isRealAI: boolean; provider: string } | null>(null)
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
 
-  const handleAdaptiveStart = useCallback(async (mode: "adaptive" | "mistakes") => {
+  const handleAdaptiveStart = useCallback(async (mode: "adaptive" | "mistakes" | "recovery", topicId?: string, attemptId?: string) => {
     setAiLoading(true)
     try {
+      const payload: any = { mode }
+      if (topicId) payload.topicId = topicId
+      if (attemptId) payload.attemptId = attemptId
+
       const res = await fetch(`${API_URL}/api/training/adaptive/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify(payload),
         credentials: "include"
       })
       if (res.ok) {
@@ -232,12 +236,13 @@ export default function TrainPage() {
     }
   }, [aiTopic, aiDifficulty, aiCount, router, setAiError, setAiLoading]);
 
-  // Handle incoming mode from dashboard
+  // Handle incoming mode from dashboard or arena redirect
   useEffect(() => {
     const mode = searchParams?.get('mode')
-    if (mode === 'adaptive' || mode === 'mistakes') {
-      // Auto-start an adaptive session
-      handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : "adaptive")
+    if (mode === 'adaptive' || mode === 'mistakes' || mode === 'recovery') {
+      const topicId = searchParams?.get('topicId') || undefined
+      const attemptId = searchParams?.get('attemptId') || undefined
+      handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : mode as any, topicId, attemptId)
     }
   }, [searchParams, handleAdaptiveStart])
 
@@ -271,12 +276,11 @@ export default function TrainPage() {
     }
 
     if (mode === "ADAPTIVE MODE") {
-      handleAdaptiveStart("adaptive")
+      handleAdaptiveStart("adaptive", topicIDMap[topic] || topic.toLowerCase())
       return
     }
-
     if (mode === "RECOVERY MODE") {
-      handleAdaptiveStart("mistakes")
+      handleAdaptiveStart("mistakes", topicIDMap[topic] || topic.toLowerCase())
       return
     }
 

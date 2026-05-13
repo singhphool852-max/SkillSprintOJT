@@ -39,9 +39,31 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
     
     try {
       const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+      const isRecovery = mode.toUpperCase() === "MISTAKES" || mode.toUpperCase() === "RECOVERY MODE" || mode.toUpperCase() === "RECOVERY"
+      
       let apiData: any;
 
-      if (isUUID) {
+      if (isUUID && isRecovery) {
+        // PATH C: Special Recovery Path from Attempt ID
+        const res = await fetch(`${API_URL}/api/training/adaptive/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            mode: "recovery",
+            attemptId: id 
+          }),
+          credentials: "include"
+        });
+
+        if (!res.ok) {
+           const errData = await res.json().catch(() => ({}));
+           setOfflineStatus(errData.error || `Recovery failed (${res.status})`);
+           setQuestions([]);
+           setLoading(false);
+           return;
+        }
+        apiData = await res.json();
+      } else if (isUUID) {
         // PATH A: Retrieve existing session by UUID
         const res = await fetch(`${API_URL}/api/train/session/${id}`, {
           method: "GET",
@@ -158,18 +180,49 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
   }
 
   if (questions.length === 0 && !loading) {
-     return (
-       <div className="flex flex-col items-center justify-center min-h-screen gap-6 bg-deep-bg p-4 relative overflow-hidden">
-         <ShieldAlert className="h-12 w-12 text-neon-pink" />
-         <div className="text-center">
-            <h2 className="text-xl font-bold font-mono text-foreground uppercase tracking-widest">CRITICAL ANOMALY</h2>
-            <p className="text-xs text-muted-foreground font-mono mt-2 uppercase">No data found in vault and fallback datasets are compromised.</p>
-         </div>
-         <button onClick={() => router.push("/train")} className="px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-muted-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2">
-           <ArrowLeft className="h-3 w-3" /> Return to Hub
-         </button>
-       </div>
-     )
+    const isMistakesMode = mode.toUpperCase() === "MISTAKES" || mode.toUpperCase() === "RECOVERY MODE" || mode.toUpperCase() === "RECOVERY"
+    
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-6 bg-deep-bg p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent animate-pulse" />
+        
+        {isMistakesMode ? (
+          <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-500">
+            <div className="h-20 w-20 rounded-full border-2 border-neon-cyan/20 flex items-center justify-center relative">
+               <ShieldCheck className="h-10 w-10 text-neon-cyan" />
+               <div className="absolute inset-0 rounded-full border-2 border-neon-cyan animate-ping opacity-20" />
+            </div>
+            <div className="text-center max-w-md">
+              <h2 className="text-2xl font-bold font-mono text-foreground uppercase tracking-widest mb-2">NEURAL VAULT SECURED</h2>
+              <p className="text-sm text-muted-foreground font-mono uppercase leading-relaxed">
+                Great job! You have no pending recovery questions. Your mastery of this topic is currently optimal.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button onClick={() => router.push("/train")} className="w-full px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2 group">
+                <ArrowLeft className="h-3 w-3 group-hover:-translate-x-1 transition-transform" /> Return to Training Hub
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-6">
+            <ShieldAlert className="h-12 w-12 text-neon-pink" />
+            <div className="text-center">
+              <h2 className="text-xl font-bold font-mono text-foreground uppercase tracking-widest">SESSION INITIALIZATION FAILED</h2>
+              <p className="text-xs text-muted-foreground font-mono mt-2 uppercase">Neural Vault response was empty or datasets are currently unavailable.</p>
+            </div>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button onClick={() => fetchQuestions()} className="w-full px-6 py-3 border border-neon-cyan/30 bg-neon-cyan/5 text-xs font-mono font-bold tracking-widest text-neon-cyan uppercase hover:bg-neon-cyan/10 transition-all flex items-center justify-center gap-2">
+                <RefreshCcw className="h-3 w-3" /> Retry Initialization
+              </button>
+              <button onClick={() => router.push("/train")} className="w-full px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-muted-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2">
+                <ArrowLeft className="h-3 w-3" /> Return to Hub
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
