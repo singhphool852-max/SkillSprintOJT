@@ -10,6 +10,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// recalculateTestMaxScore updates the maxScore field in the tests table
+// based on the sum of points of all associated questions.
+func recalculateTestMaxScore(testID string) {
+	var totalPoints int
+	database.DB.Model(&models.TestQuestion{}).Where("testId = ?", testID).Select("SUM(points)").Scan(&totalPoints)
+	database.DB.Model(&models.Test{}).Where("id = ?", testID).Update("maxScore", totalPoints)
+}
+
 // ──────────────────────────────────────────────
 // Request structs
 // ──────────────────────────────────────────────
@@ -325,6 +333,9 @@ func AddQuestion(c *gin.Context) {
 
 	tx.Commit()
 
+	// Sync MaxScore
+	recalculateTestMaxScore(testID)
+
 	// Reload with associations for response
 	var created models.TestQuestion
 	database.DB.Preload("MCQOptions").Preload("CodingDetail").Where("id = ?", questionID).First(&created)
@@ -576,6 +587,9 @@ func UpdateQuestion(c *gin.Context) {
 		return
 	}
 
+	// Sync MaxScore
+	recalculateTestMaxScore(question.TestID)
+
 	var updated models.TestQuestion
 	database.DB.Preload("MCQOptions").Preload("CodingDetail").Preload("TestCases").Where("id = ?", qID).First(&updated)
 	c.JSON(http.StatusOK, updated)
@@ -600,6 +614,9 @@ func DeleteQuestion(c *gin.Context) {
 	tx.Where("questionId = ?", qID).Delete(&models.TestCase{})
 	tx.Delete(&question)
 	tx.Commit()
+
+	// Sync MaxScore
+	recalculateTestMaxScore(question.TestID)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Question deleted", "questionId": qID})
 }

@@ -99,8 +99,11 @@ func StartAdaptiveTraining(c *gin.Context) {
 			var existing models.TrainingQuestion
 			if err := database.DB.Where("topic = ? AND prompt = ?", tq.Topic, tq.Prompt).First(&existing).Error; err == nil {
 				tq.ID = existing.ID
+				log.Printf("[RECOVERY] Mapping mistake to existing vault question ID: %d", tq.ID)
 			} else {
-				database.DB.Create(tq)
+				if err := database.DB.Create(tq).Error; err != nil {
+					log.Printf("[ERROR] Failed to persist recovery question: %v", err)
+				}
 			}
 
 			if tq.ID > 0 {
@@ -172,11 +175,19 @@ func StartAdaptiveTraining(c *gin.Context) {
 		if len(sessionQuestions) < targetCount {
 			var pool []models.TrainingQuestion
 			limit := targetCount - len(sessionQuestions)
+			
+			// Topic prioritization: requested topic > weakest topic > second weakest
 			searchTopic := strings.ToLower(req.TopicID)
+			if searchTopic == "" && len(weakTopics) > 0 {
+				searchTopic = strings.ToLower(weakTopics[0].TopicID)
+				log.Printf("[TRAIN] No topic requested. Targeting weakest area: %s", searchTopic)
+			}
 			
 			if searchTopic != "" {
 				database.DB.Order("RAND()").Where("topic = ?", searchTopic).Limit(limit).Find(&pool)
 			}
+			
+			// Global Fallback (Stage 5)
 			if len(pool) < limit {
 				var fallbackPool []models.TrainingQuestion
 				database.DB.Order("RAND()").Limit(limit - len(pool)).Find(&fallbackPool)
@@ -186,9 +197,15 @@ func StartAdaptiveTraining(c *gin.Context) {
 		}
 	}
 
+	// 4. Emergency Fallback (Stage 6) - If still zero questions, pick ANY from vault
+	if len(sessionQuestions) == 0 {
+		log.Printf("[TRAIN] CRITICAL: Session still empty. Attempting emergency global fallback.")
+		database.DB.Order("RAND()").Limit(targetCount).Find(&sessionQuestions)
+	}
+
 	log.Printf("[TRAIN] Final session size: %d", len(sessionQuestions))
 	
-	// Final ID extraction and validation
+	// 5. Final ID extraction and validation
 	qIDs := []uint{}
 	for _, q := range sessionQuestions {
 		if q.ID > 0 {
@@ -208,7 +225,7 @@ func StartAdaptiveTraining(c *gin.Context) {
 		sessionQuestions[i], sessionQuestions[j] = sessionQuestions[j], sessionQuestions[i]
 	})
 
-	// 4. Store Session
+	// 6. Store Session
 	sessionID := uuid.New().String()
 	qIDsJSON, _ := json.Marshal(qIDs)
 	session := models.TrainingSession{

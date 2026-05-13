@@ -87,7 +87,7 @@ func GetUserDashboardFull(c *gin.Context) {
 			"AVG(test_attempts.score) as avg_score, "+
 			"MAX(test_attempts.score) as max_score, "+
 			"SUM(test_attempts.score) as total_score, "+
-			"SUM(tests.maxScore) as max_possible").
+			"SUM(COALESCE(NULLIF(tests.maxScore, 0), (SELECT SUM(points) FROM test_questions WHERE testId = tests.id))) as max_possible").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
 		Joins("LEFT JOIN topics ON topics.id = tests.topicId").
 		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL", userID).
@@ -157,7 +157,7 @@ func GetUserDashboardFull(c *gin.Context) {
 	}
 	var trendRows []trendRow
 	database.DB.Table("test_attempts").
-		Select("tests.title as test_title, test_attempts.score, tests.maxScore as max_possible, test_attempts.submittedAt as submitted_at").
+		Select("tests.title as test_title, test_attempts.score, COALESCE(NULLIF(tests.maxScore, 0), (SELECT SUM(points) FROM test_questions WHERE testId = tests.id)) as max_possible, test_attempts.submittedAt as submitted_at").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
 		Where("test_attempts.userId = ? AND test_attempts.submittedAt IS NOT NULL", userID).
 		Order("test_attempts.submittedAt ASC").
@@ -193,7 +193,7 @@ func GetUserDashboardFull(c *gin.Context) {
 	database.DB.Table("test_attempts").
 		Select("test_attempts.id as attempt_id, tests.id as test_id, tests.title as test_title, "+
 			"COALESCE(topics.name, 'General') as topic_name, "+
-			"test_attempts.score, tests.maxScore as max_possible, "+
+			"test_attempts.score, COALESCE(NULLIF(tests.maxScore, 0), (SELECT SUM(points) FROM test_questions WHERE testId = tests.id)) as max_possible, "+
 			"test_attempts.isAutoSubmitted as is_auto_submitted, "+
 			"test_attempts.submittedAt as submitted_at").
 		Joins("JOIN tests ON tests.id = test_attempts.testId").
