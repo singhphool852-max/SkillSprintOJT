@@ -68,6 +68,13 @@ func ChatWebSocket(c *gin.Context) {
 		return
 	}
 
+	// Check if ChatHub is initialized
+	if ChatHub == nil {
+		log.Printf("[CHAT] CRITICAL: ChatHub is nil, cannot serve WebSocket")
+		conn.Close()
+		return
+	}
+
 	log.Printf("[CHAT] WebSocket connection established for user: %s (%s)", user.Username, user.ID)
 	ChatHub.ServeWS(conn, user.ID, user.Username, user.AvatarURL)
 }

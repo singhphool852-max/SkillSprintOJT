@@ -10,6 +10,7 @@ import (
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/chat"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/handlers"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/judge"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/leaderboard"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/middleware"
 
@@ -243,6 +244,18 @@ func main() {
 		c.JSON(200, gin.H{
 			"status": "Chat backend is reachable",
 			"time":   time.Now().Format(time.RFC3339),
+		})
+	})
+
+	// Judge test endpoint (temporary for debugging)
+	api.GET("/judge/test", func(c *gin.Context) {
+		code := `print("hello world")`
+		result, err := judge.GetService().Execute(code, "python", "", 2000)
+		c.JSON(200, gin.H{
+			"error":     err,
+			"output":    result.Output,
+			"exitCode":  result.ExitCode,
+			"errorType": result.ErrorType,
 		})
 	})
 
