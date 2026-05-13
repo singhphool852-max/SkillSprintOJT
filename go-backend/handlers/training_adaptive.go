@@ -18,7 +18,8 @@ import (
 type AdaptiveSessionRequest struct {
 	TopicID    string `json:"topicId"`    // Optional: focus on one topic
 	Difficulty string `json:"difficulty"` // Optional: override adaptive difficulty
-	Mode       string `json:"mode"`       // "mistakes", "adaptive", "mastery"
+	Mode       string `json:"mode"`       // "mistakes", "adaptive", "recovery"
+	AttemptID  string `json:"attemptId"`  // NEW: specific attempt to recover from
 }
 
 // ──────────────────────────────────────────────
@@ -33,6 +34,8 @@ func StartAdaptiveTraining(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[TRAIN] Starting session: user=%s mode=%s attempt=%s topic=%s", userID, req.Mode, req.AttemptID, req.TopicID)
+
 	// 1. Identify Weak Topics (if not specified)
 	var weakTopics []models.UserTopicStats
 	if req.TopicID == "" {
@@ -41,30 +44,45 @@ func StartAdaptiveTraining(c *gin.Context) {
 	} else {
 		var stat models.UserTopicStats
 		database.DB.Where("userId = ? AND topicId = ?", userID, req.TopicID).First(&stat)
-		weakTopics = append(weakTopics, stat)
+		if stat.ID != "" {
+			weakTopics = append(weakTopics, stat)
+		}
 	}
 
 	var sessionQuestions []models.TrainingQuestion
 	targetCount := 10
 
-	// 2. Mode: "mistakes" -> Focus strictly on UserWrongQuestions
-	if req.Mode == "mistakes" {
+	// 2. Mode: "mistakes" or "recovery" -> Focus strictly on UserWrongQuestions
+	if req.Mode == "mistakes" || req.Mode == "recovery" {
 		var mistakes []models.UserWrongQuestion
 		query := database.DB.Where("userId = ? AND masteredAt IS NULL", userID)
-		if req.TopicID != "" {
+		
+		if req.AttemptID != "" {
+			query = query.Where("attemptId = ?", req.AttemptID)
+			log.Printf("[RECOVERY] Fetching mistakes specifically for attempt: %s", req.AttemptID)
+		} else if req.TopicID != "" {
 			query = query.Where("topicId = ?", req.TopicID)
 		}
-		// PRIORITIZE: Highest WrongCount first (questions failed many times)
-		query.Order("wrongCount DESC, reviewCount ASC, createdAt DESC").Limit(targetCount).Find(&mistakes)
+		
+		// For global mistakes, prioritize worst failures. For specific recovery, show in order.
+		if req.AttemptID == "" {
+			query = query.Order("wrongCount DESC, reviewCount ASC, createdAt DESC")
+		} else {
+			query = query.Order("createdAt ASC")
+		}
+		
+		query.Limit(targetCount).Find(&mistakes)
+		log.Printf("[RECOVERY] Found %d mistake(s) for user", len(mistakes))
 
 		for _, m := range mistakes {
-			// Convert UserWrongQuestion back to TrainingQuestion format for the UI
-			var tq models.TrainingQuestion
-			tq.Prompt = m.QuestionTitle
-			tq.Topic = m.TopicID
-			tq.Difficulty = m.Difficulty
-			tq.Type = m.QuestionType
-			tq.Answer = m.CorrectAnswer
+			tq := &models.TrainingQuestion{
+				Prompt:      m.QuestionTitle,
+				Topic:       m.TopicID,
+				Difficulty:  m.Difficulty,
+				Type:        m.QuestionType,
+				Answer:      m.CorrectAnswer,
+				Source:      "recovery",
+			}
 			
 			if m.QuestionType == "mcq" {
 				var opts []models.TestMCQOption
@@ -76,16 +94,26 @@ func StartAdaptiveTraining(c *gin.Context) {
 				optJSON, _ := json.Marshal(optTexts)
 				tq.Options = string(optJSON)
 			}
-			sessionQuestions = append(sessionQuestions, tq)
 
-			// NEW: Generate a similar question based on THIS specific mistake
+			var existing models.TrainingQuestion
+			if err := database.DB.Where("topic = ? AND prompt = ?", tq.Topic, tq.Prompt).First(&existing).Error; err == nil {
+				tq.ID = existing.ID
+			} else {
+				database.DB.Create(tq)
+			}
+
+			if tq.ID > 0 {
+				sessionQuestions = append(sessionQuestions, *tq)
+			}
+
+			// In "adaptive" mode, we generate similar variations. 
+			// In strict "recovery", we ONLY show the mistakes unless requested otherwise.
 			if req.Mode == "adaptive" && len(sessionQuestions) < targetCount {
-				log.Printf("[ADAPTIVE] Generating similar variation for question: %s", m.QuestionTitle)
 				simQuestions, err := services.GenerateSimilarQuestions(m.QuestionTitle, m.TopicID, m.Difficulty, 1)
 				if err == nil && len(simQuestions) > 0 {
 					sq := simQuestions[0]
 					optJSON, _ := json.Marshal(sq.Options)
-					sessionQuestions = append(sessionQuestions, models.TrainingQuestion{
+					newTQ := &models.TrainingQuestion{
 						Topic:       m.TopicID,
 						Type:        sq.Type,
 						Difficulty:  sq.Difficulty,
@@ -94,30 +122,35 @@ func StartAdaptiveTraining(c *gin.Context) {
 						Answer:      sq.Answer,
 						Explanation: sq.Explanation,
 						Source:      "ai_similar",
-					})
+					}
+					database.DB.Create(newTQ)
+					if newTQ.ID > 0 {
+						sessionQuestions = append(sessionQuestions, *newTQ)
+					}
 				}
 			}
 		}
 	}
 
-	// 3. Mode: "adaptive" -> Mix Mistakes, AI Similar, and Random
-	if req.Mode == "adaptive" || len(sessionQuestions) < targetCount {
-		// Fill remaining with AI-generated similar questions based on weak areas
-		if len(weakTopics) > 0 {
+	// 3. Mode: "adaptive" or top-up logic
+	// CRITICAL: If strictly in "recovery" mode for a specific attempt, we might NOT want to top-up
+	// but the user's requirement says "Allow the user to retry only those failed questions."
+	shouldTopUp := req.Mode == "adaptive" || (req.Mode == "mistakes" && req.AttemptID == "")
+	
+	if shouldTopUp && len(sessionQuestions) < targetCount {
+		log.Printf("[TRAIN] Stage 3: Filling slots (current: %d/%d)", len(sessionQuestions), targetCount)
+		
+		if len(sessionQuestions) < targetCount && len(weakTopics) > 0 {
 			topicToFocus := weakTopics[0]
-			
-			// Calculate difficulty based on accuracy
 			diff := "easy"
 			if topicToFocus.AccuracyPercent > 40 { diff = "medium" }
 			if topicToFocus.AccuracyPercent > 70 { diff = "hard" }
-			
-			log.Printf("[ADAPTIVE] Generating AI questions for user %s on topic %s (diff: %s)", userID, topicToFocus.TopicName, diff)
 			
 			aiQuestions, err := services.GenerateQuestions(topicToFocus.TopicName, diff, 5, nil)
 			if err == nil {
 				for _, aq := range aiQuestions {
 					optJSON, _ := json.Marshal(aq.Options)
-					sessionQuestions = append(sessionQuestions, models.TrainingQuestion{
+					tq := &models.TrainingQuestion{
 						Topic:       topicToFocus.TopicID,
 						Type:        aq.Type,
 						Difficulty:  aq.Difficulty,
@@ -126,23 +159,46 @@ func StartAdaptiveTraining(c *gin.Context) {
 						Answer:      aq.Answer,
 						Explanation: aq.Explanation,
 						Source:      "ai_adaptive",
-					})
+					}
+					database.DB.Create(tq)
+					if tq.ID > 0 {
+						sessionQuestions = append(sessionQuestions, *tq)
+					}
 				}
 			}
 		}
 
-		// Fill remaining with random practice questions from the pool
 		if len(sessionQuestions) < targetCount {
 			var pool []models.TrainingQuestion
 			limit := targetCount - len(sessionQuestions)
+			searchTopic := strings.ToLower(req.TopicID)
 			
-			q := database.DB.Order("RANDOM()")
-			if req.TopicID != "" {
-				q = q.Where("topic = ?", req.TopicID)
+			if searchTopic != "" {
+				database.DB.Order("RAND()").Where("topic = ?", searchTopic).Limit(limit).Find(&pool)
 			}
-			q.Limit(limit).Find(&pool)
+			if len(pool) < limit {
+				var fallbackPool []models.TrainingQuestion
+				database.DB.Order("RAND()").Limit(limit - len(pool)).Find(&fallbackPool)
+				pool = append(pool, fallbackPool...)
+			}
 			sessionQuestions = append(sessionQuestions, pool...)
 		}
+	}
+
+	log.Printf("[TRAIN] Final session size: %d", len(sessionQuestions))
+	
+	// Final ID extraction and validation
+	qIDs := []uint{}
+	for _, q := range sessionQuestions {
+		if q.ID > 0 {
+			qIDs = append(qIDs, q.ID)
+		}
+	}
+
+	if len(qIDs) == 0 {
+		log.Printf("[ERROR] Failed to assemble session: zero valid IDs found")
+		c.JSON(http.StatusNotFound, gin.H{"error": "Neural Vault is empty. Please upload notes or complete tests first."})
+		return
 	}
 
 	// Shuffle for variety
@@ -153,12 +209,7 @@ func StartAdaptiveTraining(c *gin.Context) {
 
 	// 4. Store Session
 	sessionID := uuid.New().String()
-	var qIDs []uint
-	for _, q := range sessionQuestions {
-		qIDs = append(qIDs, q.ID)
-	}
 	qIDsJSON, _ := json.Marshal(qIDs)
-
 	session := models.TrainingSession{
 		SessionID:   sessionID,
 		Topic:       req.TopicID,
