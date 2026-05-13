@@ -48,7 +48,12 @@ export function useChat(token: string | null) {
 
   // Connect to WebSocket
   const connect = useCallback(() => {
-    if (!token || wsRef.current?.readyState === WebSocket.OPEN) return
+    console.log('[CHAT] connect() called, token:', token ? 'EXISTS' : 'NULL')
+    
+    if (!token || wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('[CHAT] Skipping connection - token:', !!token, 'wsState:', wsRef.current?.readyState)
+      return
+    }
 
     // Use the same API_URL as the rest of the app
     const wsBase = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
@@ -110,11 +115,13 @@ export function useChat(token: string | null) {
     wsRef.current = ws
   }, [token])
 
-  // Connect on mount
+  // Connect on mount and when token changes
   useEffect(() => {
+    console.log('[CHAT] useEffect triggered, token:', token ? 'EXISTS' : 'NULL')
     connect()
 
     return () => {
+      console.log('[CHAT] Cleaning up WebSocket connection')
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
