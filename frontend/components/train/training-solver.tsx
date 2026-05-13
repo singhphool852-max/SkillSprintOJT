@@ -36,9 +36,10 @@ interface TrainingSolverProps {
   difficulty: string
   count: number
   arenaId: string
+  summary?: string
 }
 
-export function TrainingSolver({ initialQuestions, topic, mode, difficulty, count, arenaId }: TrainingSolverProps) {
+export function TrainingSolver({ initialQuestions, topic, mode, difficulty, count, arenaId, summary }: TrainingSolverProps) {
   const router = useRouter()
   const [currentQ, setCurrentQ] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -48,7 +49,8 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
   const [evaluating, setEvaluating] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
-  const [startedAt] = useState(new Date())
+  const [viewingSummary, setViewingSummary] = useState(!!summary)
+  const [startedAt, setStartedAt] = useState(new Date())
   const [lastQuestionSync, setLastQuestionSync] = useState(new Date())
 
   const defaultTime = useMemo(() => {
@@ -114,32 +116,39 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
       if (isMCQ && currentQuestion.options) {
         // userAnswer is the option ID (e.g. "OPT_13_2")
         // dbAnswer is the option text (e.g. "3NF")
-        // Find which option the user selected
         const selectedOpt = currentQuestion.options.find((o: any) => o.id === userAnswer)
         const selectedText = selectedOpt?.text || ""
 
-        // Find the correct option by normalized text match
+        // More robust matching: Normalize both, and check for inclusion if exact match fails
+        const normUser = normalize(selectedText)
+        const normCorrect = normalize(dbAnswer)
+        
+        isCorrect = normUser === normCorrect || 
+                    (normUser.length > 0 && normCorrect.length > 0 && 
+                     (normUser.includes(normCorrect) || normCorrect.includes(normUser)))
+
+        // Find the correct option ID for UI highlighting
         const correctOpt = currentQuestion.options.find(
-          (o: any) => normalize(o.text) === normalize(dbAnswer)
+          (o: any) => {
+            const nO = normalize(o.text)
+            return nO === normCorrect || (nO.length > 0 && normCorrect.length > 0 && (nO.includes(normCorrect) || normCorrect.includes(nO)))
+          }
         )
         correctOptionId = correctOpt?.id
-
-        // Compare the selected option text against the correct answer text
-        isCorrect = normalize(selectedText) === normalize(dbAnswer)
 
         console.log("[Verify] question id:", currentQuestion.id)
         console.log("[Verify] raw user answer:", selectedText)
         console.log("[Verify] raw correct answer:", dbAnswer)
-        console.log("[Verify] normalized user:", normalize(selectedText))
-        console.log("[Verify] normalized correct:", normalize(dbAnswer))
         console.log("[Verify] result:", isCorrect ? "CORRECT" : "INCORRECT")
       } else {
         // For non-MCQ, do a basic normalized comparison
-        isCorrect = normalize(userAnswer).includes(normalize(dbAnswer).substring(0, 30))
+        const normUser = normalize(userAnswer)
+        const normCorrect = normalize(dbAnswer)
+        isCorrect = normUser === normCorrect || 
+                    (normUser.length > 5 && normCorrect.length > 5 && 
+                     (normUser.includes(normCorrect) || normCorrect.includes(normUser.substring(0, 30))))
 
         console.log("[Verify] question id:", currentQuestion.id)
-        console.log("[Verify] raw user answer:", userAnswer.substring(0, 50))
-        console.log("[Verify] raw correct answer:", dbAnswer.substring(0, 50))
         console.log("[Verify] result:", isCorrect ? "CORRECT" : "INCORRECT")
       }
 
@@ -333,14 +342,14 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
   }, [currentQ, initialQuestions, answers, evaluations, arenaId, startedAt, lastQuestionSync, defaultTime, evaluating, router])
 
   useEffect(() => {
-    if (evaluating || currentEvaluation) return
+    if (viewingSummary || evaluating || currentEvaluation) return
     if (timeLeft <= 0) {
       handleNext()
       return
     }
     const timer = setInterval(() => setTimeLeft(t => t - 1), 1000)
     return () => clearInterval(timer)
-  }, [timeLeft, evaluating, currentEvaluation, handleNext])
+  }, [timeLeft, evaluating, currentEvaluation, handleNext, viewingSummary])
 
   if (!currentQuestion) {
     return (
@@ -412,7 +421,50 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
 
       {/* Main content */}
       <div className="relative z-10 flex-1 flex flex-col items-center py-12 px-4 pb-32">
-        {evaluating ? (
+        {viewingSummary ? (
+          <div className="w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="border border-panel-border bg-panel-bg/40 p-8 lg:p-12 backdrop-blur-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-5">
+                <Brain className="h-40 w-40" />
+              </div>
+              
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="h-8 w-8 flex items-center justify-center border border-neon-cyan text-neon-cyan bg-neon-cyan/5">
+                    <Info className="h-4 w-4" />
+                  </div>
+                  <span className="font-mono text-[10px] tracking-[0.3em] text-neon-cyan uppercase">
+                    SYNOPSIS EXTRACTED
+                  </span>
+                </div>
+
+                <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl mb-8">
+                  SESSION <span className="text-neon-cyan text-glow-cyan">SUMMARY</span>
+                </h2>
+
+                <div className="prose prose-invert max-w-none mb-12">
+                  <div className="bg-deep-bg/50 border border-panel-border p-6 font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                    {summary}
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button 
+                    onClick={() => {
+                      setViewingSummary(false);
+                      setStartedAt(new Date());
+                      setLastQuestionSync(new Date());
+                    }}
+                    className="group relative flex items-center gap-3 border border-neon-cyan bg-neon-cyan/10 text-neon-cyan px-10 py-4 font-mono text-xs font-bold tracking-[0.3em] transition-all hover:bg-neon-cyan/20 hover:shadow-[0_0_25px_rgba(0,240,255,0.2)]"
+                  >
+                    START TRAINING
+                    <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : evaluating ? (
           <div className="flex flex-col items-center justify-center min-h-[50vh] gap-6 text-center animate-in fade-in duration-500">
              <div className="relative h-20 w-20">
                 <Loader2 className="absolute inset-0 h-20 w-20 text-neon-cyan animate-spin opacity-20" />

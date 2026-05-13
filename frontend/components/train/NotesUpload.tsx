@@ -73,6 +73,12 @@ export function NotesUpload() {
 
       const data = parsed ?? {}
       console.log("[NOTES_UPLOAD] Success Response:", data)
+
+      // Persist the AI-generated summary so the play page can display it
+      if (data.summary) {
+        sessionStorage.setItem("skillsprint_notes_summary", data.summary)
+      }
+
       router.push(`/train/play/${data.session_id}?topic=${encodeURIComponent(topic)}&mode=AI_SYNTH_MODE&difficulty=${encodeURIComponent(difficulty)}&count=${data.count}`)
     } catch (err: any) {
       console.error("[NOTES_UPLOAD] Fatal Error:", err)

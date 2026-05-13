@@ -49,42 +49,59 @@ type AIResponse struct {
 	ImprovementSuggestion string `json:"improvementSuggestion"`
 }
 
-// EvaluateAnswer scores a user's answer against the correct answer using Gemini.
+// EvaluateAnswer scores a user's answer against the correct answer using Gemini or OpenAI.
 func EvaluateAnswer(question, correctAnswer, userAnswer string, maxScore int) (*AIResponse, error) {
+	// 1. Try Gemini first (as it's the primary provider for this project)
 	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		log.Println("[EVAL] GEMINI_API_KEY not set, using mock evaluator")
-		score := 0
-		if len(strings.TrimSpace(userAnswer)) > 10 {
-			score = maxScore - 1
-		}
-		isCorrect := score > maxScore/2
-		return &AIResponse{
-			Score:                 score,
-			IsCorrect:             isCorrect,
-			Feedback:              "Evaluated by SkillSprint AI (Mock Mode).",
-			Explanation:           fmt.Sprintf("Reference Answer: %s", correctAnswer),
-			ImprovementSuggestion: "Try to include more technical keywords.",
-		}, nil
+	if apiKey != "" {
+		return evaluateWithGemini(question, correctAnswer, userAnswer, maxScore, apiKey)
 	}
 
-	prompt := fmt.Sprintf(`You are a strict technical answer evaluator.
+	// 2. Fallback to OpenAI if Gemini key is missing
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	if openAIKey != "" {
+		return evaluateWithOpenAI(question, correctAnswer, userAnswer, maxScore, openAIKey)
+	}
+
+	// 3. Last resort: Mock response
+	score := 0
+	if len(strings.TrimSpace(userAnswer)) > 20 {
+		score = maxScore - 2
+	}
+	return &AIResponse{
+		Score:                 score,
+		IsCorrect:             score > maxScore/2,
+		Feedback:              "Evaluated by SkillSprint AI (System Mock). Technical connectivity to neural models is pending.",
+		Explanation:           fmt.Sprintf("Reference Answer: %s", correctAnswer),
+		ImprovementSuggestion: "Ensure your answer contains specific technical terminology relevant to the prompt.",
+	}, nil
+}
+
+func evaluateWithGemini(question, correctAnswer, userAnswer string, maxScore int, apiKey string) (*AIResponse, error) {
+	prompt := fmt.Sprintf(`You are a technical examiner.
+Evaluate the User Answer against the Correct Answer for the given Question.
 
 Question: %s
 Correct Answer: %s
 User Answer: %s
-Max Score: %d
 
-Evaluate how correct and complete the User Answer is compared to the Correct Answer.
+Task:
+1. Assign a score out of %d.
+2. Determine if it is fundamentally correct (isCorrect).
+3. Provide concise feedback.
+4. Provide the correct technical explanation.
+5. Suggest one specific improvement.
 
-Respond ONLY with a JSON object, no markdown, no explanation outside JSON:
+Return ONLY a JSON object with this structure:
 {
-  "score": <integer 0 to %d>,
-  "isCorrect": <true if score >= 60 percent of max, false otherwise>,
-  "feedback": "<one sentence on answer quality>",
-  "explanation": "<the correct reasoning>",
-  "improvementSuggestion": "<how to improve>"
-}`, question, correctAnswer, userAnswer, maxScore, maxScore)
+  "score": integer,
+  "isCorrect": boolean,
+  "feedback": "string",
+  "explanation": "string",
+  "improvementSuggestion": "string"
+}
+
+No markdown. No extra text.`, question, correctAnswer, userAnswer, maxScore)
 
 	type Part struct{ Text string `json:"text"` }
 	type Content struct{ Parts []Part `json:"parts"` }
@@ -106,7 +123,7 @@ Respond ONLY with a JSON object, no markdown, no explanation outside JSON:
 		if isGeminiRateLimited(resp.StatusCode, respBody) {
 			return nil, ErrGeminiRateLimit
 		}
-		return nil, fmt.Errorf("gemini API error: %d", resp.StatusCode)
+		return nil, fmt.Errorf("gemini evaluation error: %d", resp.StatusCode)
 	}
 
 	var geminiResp struct {
@@ -123,32 +140,83 @@ Respond ONLY with a JSON object, no markdown, no explanation outside JSON:
 	}
 
 	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from gemini")
+		return nil, fmt.Errorf("empty response from Gemini")
 	}
 
 	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
-	
-	// Clean response - extract JSON object
-	cleaned := strings.TrimSpace(rawText)
-	cleaned = strings.TrimPrefix(cleaned, "```json")
-	cleaned = strings.TrimPrefix(cleaned, "```")
-	cleaned = strings.TrimSuffix(cleaned, "```")
-	cleaned = strings.TrimSpace(cleaned)
-	
-	first := strings.Index(cleaned, "{")
-	last := strings.LastIndex(cleaned, "}")
-	if first != -1 && last != -1 && last > first {
-		cleaned = cleaned[first : last+1]
-	}
-
-	log.Printf("[EVAL] gemini raw eval response: %s", cleaned)
+	cleaned := cleanGeminiResponse(rawText)
 
 	var eval AIResponse
 	if err := json.Unmarshal([]byte(cleaned), &eval); err != nil {
-		return nil, fmt.Errorf("failed to parse eval response: %w", err)
+		log.Printf("[AI_EVAL_ERROR] failed to parse JSON: %s", cleaned)
+		return nil, fmt.Errorf("failed to parse AI evaluation result")
 	}
 
-	log.Printf("[EVAL] score=%d isCorrect=%v", eval.Score, eval.IsCorrect)
+	return &eval, nil
+}
+
+func evaluateWithOpenAI(question, correctAnswer, userAnswer string, maxScore int, apiKey string) (*AIResponse, error) {
+	url := "https://api.openai.com/v1/chat/completions"
+	prompt := fmt.Sprintf(`You are an evaluator.
+Question: %s
+Correct Answer: %s
+User Answer: %s
+
+Task: Evaluate the User Answer against the Correct Answer.
+Return a JSON object with:
+- score: out of %d
+- isCorrect: boolean
+- feedback: short text on quality
+- explanation: the correct reasoning
+- improvementSuggestion: how to get a better score
+
+Respond ONLY with JSON.`, question, correctAnswer, userAnswer, maxScore)
+
+	payload := map[string]interface{}{
+		"model": "gpt-4o-mini",
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"response_format": map[string]string{"type": "json_object"},
+	}
+
+	jsonData, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OpenAI service error: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	if len(result.Choices) == 0 {
+		return nil, fmt.Errorf("no response from OpenAI")
+	}
+
+	var eval AIResponse
+	if err := json.Unmarshal([]byte(result.Choices[0].Message.Content), &eval); err != nil {
+		return nil, err
+	}
+
 	return &eval, nil
 }
 

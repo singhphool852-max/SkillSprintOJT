@@ -21,6 +21,16 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
   const [questions, setQuestions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [offlineStatus, setOfflineStatus] = useState<string | null>(null)
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    const savedSummary = sessionStorage.getItem("skillsprint_notes_summary")
+    if (savedSummary) {
+      setSummary(savedSummary)
+      // Optional: clear it so it doesn't persist across different sessions
+      // sessionStorage.removeItem("skillsprint_notes_summary")
+    }
+  }, [])
 
   const fetchQuestions = async () => {
     if (!id) return;
@@ -180,6 +190,7 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
            difficulty={difficulty}
            count={offlineStatus ? questions.length : count}
            arenaId={id}
+           summary={summary}
          />
       </div>
     </ProtectedRoute>
