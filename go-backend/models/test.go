@@ -111,11 +111,11 @@ type TestAttempt struct {
 	Mode            string     `gorm:"column:mode;default:arena" json:"mode"` // "arena" (ranked, single) | "practice" | "train"
 	StartedAt       time.Time  `gorm:"column:startedAt" json:"startedAt"`
 	SubmittedAt     *time.Time `gorm:"column:submittedAt" json:"submittedAt"`
-	Score           int       `gorm:"column:score" json:"score"`
-	TotalQuestions  int       `gorm:"column:totalQuestions" json:"totalQuestions"`
-	TimeTaken       int       `gorm:"column:timeTaken" json:"timeTaken"` // seconds
-	ViolationCount  int       `gorm:"column:violationCount;default:0" json:"violationCount"`
-	IsAutoSubmitted bool      `gorm:"column:isAutoSubmitted;default:false" json:"isAutoSubmitted"`
+	Score           float64    `gorm:"column:score;type:decimal(10,2)" json:"score"`
+	TotalQuestions  int        `gorm:"column:totalQuestions" json:"totalQuestions"`
+	TimeTaken       int        `gorm:"column:timeTaken" json:"timeTaken"` // seconds
+	ViolationCount  int        `gorm:"column:violationCount;default:0" json:"violationCount"`
+	IsAutoSubmitted bool       `gorm:"column:isAutoSubmitted;default:false" json:"isAutoSubmitted"`
 
 	User        User             `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
 	Test        Test             `gorm:"foreignKey:TestID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"test,omitempty"`
@@ -130,17 +130,17 @@ func (TestAttempt) TableName() string {
 // TestSubmission — answer to one question within an attempt
 // ──────────────────────────────────────────────
 type TestSubmission struct {
-	ID               string `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
-	AttemptID        string `gorm:"type:varchar(191);index;column:attemptId" json:"attemptId"`
-	QuestionID       string `gorm:"type:varchar(191);index;column:questionId" json:"questionId"`
-	Type             string `gorm:"column:type" json:"type"` // "mcq" or "coding"
-	SelectedOptionID string `gorm:"type:varchar(191);index;column:selectedOptionId" json:"selectedOptionId"`
-	Code             string `gorm:"column:code" json:"code"`
-	Language         string `gorm:"column:language" json:"language"`
-	Verdict          string `gorm:"column:verdict" json:"verdict"` // "accepted", "wrong_answer", "time_limit", "pending"
-	PassedCount      int    `gorm:"column:passedCount" json:"passedCount"`
-	TotalCount       int    `gorm:"column:totalCount" json:"totalCount"`
-	Score            int    `gorm:"column:score" json:"score"`
+	ID               string  `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
+	AttemptID        string  `gorm:"type:varchar(191);index;column:attemptId" json:"attemptId"`
+	QuestionID       string  `gorm:"type:varchar(191);index;column:questionId" json:"questionId"`
+	Type             string  `gorm:"column:type" json:"type"` // "mcq" or "coding"
+	SelectedOptionID string  `gorm:"type:varchar(191);index;column:selectedOptionId" json:"selectedOptionId"`
+	Code             string  `gorm:"column:code" json:"code"`
+	Language         string  `gorm:"column:language" json:"language"`
+	Verdict          string  `gorm:"column:verdict" json:"verdict"` // "accepted", "wrong_answer", "time_limit", "pending"
+	PassedCount      int     `gorm:"column:passedCount" json:"passedCount"`
+	TotalCount       int     `gorm:"column:totalCount" json:"totalCount"`
+	Score            float64 `gorm:"column:score;type:decimal(10,2)" json:"score"`
 
 	Attempt  TestAttempt  `gorm:"foreignKey:AttemptID" json:"-"`
 	Question TestQuestion `gorm:"foreignKey:QuestionID" json:"-"`
@@ -158,7 +158,7 @@ type TestResult struct {
 	AttemptID       string    `gorm:"type:varchar(191);unique;index;column:attemptId" json:"attemptId"`
 	UserID          string    `gorm:"type:varchar(191);index;column:userId" json:"userId"`
 	TestID          string    `gorm:"type:varchar(191);index;column:testId" json:"testId"`
-	TotalScore      int       `gorm:"column:totalScore" json:"totalScore"`
+	TotalScore      float64   `gorm:"column:totalScore;type:decimal(10,2)" json:"totalScore"`
 	MaxPossible     int       `gorm:"column:maxPossible" json:"maxPossible"`
 	Percentage      float64   `gorm:"column:percentage" json:"percentage"`
 	Rank            int       `gorm:"column:rank" json:"rank"`

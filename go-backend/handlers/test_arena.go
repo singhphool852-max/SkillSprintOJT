@@ -566,11 +566,16 @@ func SubmitCode(c *gin.Context) {
 		verdict = "accepted"
 	}
 
-	// Calculate score: points * (passed / total)
-	score := 0
+	// Calculate partial score: points * (passed / total)
+	var score float64
 	if totalCount > 0 {
-		score = int(math.Round(float64(question.Points) * float64(passedCount) / float64(totalCount)))
+		score = float64(question.Points) * float64(passedCount) / float64(totalCount)
+		// Round to 2 decimal places
+		score = math.Round(score*100) / 100
 	}
+
+	allPassed := passedCount == totalCount && totalCount > 0
+	partialPass := passedCount > 0 && passedCount < totalCount
 
 	// Upsert submission
 	var existing models.TestSubmission
@@ -606,8 +611,11 @@ func SubmitCode(c *gin.Context) {
 
 	response := gin.H{
 		"verdict":     verdict,
+		"passed":      allPassed,
+		"partialPass": partialPass,
 		"passedCount": passedCount,
 		"totalCount":  totalCount,
+		"score":       score,
 		"results":     results,
 	}
 	if hasCompileError {
@@ -670,7 +678,7 @@ func SubmitTestAttempt(c *gin.Context) {
 		subMap[submissions[i].QuestionID] = &submissions[i]
 	}
 
-	totalScore := 0
+	var totalScore float64
 
 	for _, q := range questions {
 		sub, exists := subMap[q.ID]
@@ -682,7 +690,7 @@ func SubmitTestAttempt(c *gin.Context) {
 			// MCQ: full points if the selected option is correct
 			for _, opt := range q.MCQOptions {
 				if opt.ID == sub.SelectedOptionID && opt.IsCorrect {
-					sub.Score = q.Points
+					sub.Score = float64(q.Points)
 					sub.Verdict = "accepted"
 					break
 				}
