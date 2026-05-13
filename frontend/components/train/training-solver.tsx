@@ -106,14 +106,14 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
     // 3. Check if this is a DB-backed training question (from POST /api/train/session)
     //    These have _answer metadata embedded by the play page mapper
     const dbAnswer = (currentQuestion as any)._answer
-    if (dbAnswer !== undefined) {
+    if (dbAnswer !== undefined && isMCQ) {
       // Helper: normalize answer text for reliable comparison
       const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 
       let isCorrect = false
       let correctOptionId: string | undefined
 
-      if (isMCQ && currentQuestion.options) {
+      if (currentQuestion.options) {
         // userAnswer is the option ID (e.g. "OPT_13_2")
         // dbAnswer is the option text (e.g. "3NF")
         const selectedOpt = currentQuestion.options.find((o: any) => o.id === userAnswer)
@@ -139,16 +139,6 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
         console.log("[Verify] question id:", currentQuestion.id)
         console.log("[Verify] raw user answer:", selectedText)
         console.log("[Verify] raw correct answer:", dbAnswer)
-        console.log("[Verify] result:", isCorrect ? "CORRECT" : "INCORRECT")
-      } else {
-        // For non-MCQ, do a basic normalized comparison
-        const normUser = normalize(userAnswer)
-        const normCorrect = normalize(dbAnswer)
-        isCorrect = normUser === normCorrect || 
-                    (normUser.length > 5 && normCorrect.length > 5 && 
-                     (normUser.includes(normCorrect) || normCorrect.includes(normUser.substring(0, 30))))
-
-        console.log("[Verify] question id:", currentQuestion.id)
         console.log("[Verify] result:", isCorrect ? "CORRECT" : "INCORRECT")
       }
 
