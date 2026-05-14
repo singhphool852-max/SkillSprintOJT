@@ -152,11 +152,11 @@ func UploadChatFile(c *gin.Context) {
 	})
 }
 
-// GetChatHistory returns the last 50 chat messages from the database.
+// GetChatHistory returns the last 200 chat messages from the database.
 func GetChatHistory(c *gin.Context) {
 	var messages []models.ChatMessage
 
-	if err := database.DB.Order("createdAt DESC").Limit(50).Find(&messages).Error; err != nil {
+	if err := database.DB.Order("createdAt DESC").Limit(200).Find(&messages).Error; err != nil {
 		log.Printf("[CHAT] Failed to fetch chat history: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch chat history"})
 		return

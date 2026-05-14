@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 )
 
 // ChatEvent represents all types of chat events (messages, joins, leaves)
@@ -239,6 +241,25 @@ func (c *Client) ReadPump() {
 		event.Username = c.Username
 		event.Avatar = c.Avatar
 		event.Timestamp = time.Now().Format(time.RFC3339)
+
+		// Save message to database if it is a real message
+		if event.Type == "message" {
+			msg := models.ChatMessage{
+				UserID:      c.UserID,
+				Username:    c.Username,
+				Avatar:      c.Avatar,
+				MessageType: event.MessageType,
+				Content:     event.Content,
+				FileName:    event.FileName,
+				CreatedAt:   time.Now(),
+			}
+			if err := database.DB.Create(&msg).Error; err != nil {
+				log.Printf("[CHAT] Failed to save message to database: %v", err)
+				// Still broadcast even if save fails
+			} else {
+				log.Printf("[CHAT] Message saved to database: ID=%d", msg.ID)
+			}
+		}
 
 		// Broadcast the message
 		data, err := json.Marshal(event)
