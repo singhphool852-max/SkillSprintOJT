@@ -56,7 +56,7 @@ func StartAdaptiveTraining(c *gin.Context) {
 	// 2. Mode: "mistakes" or "recovery" -> Focus strictly on UserWrongQuestions
 	if req.Mode == "mistakes" || req.Mode == "recovery" {
 		var mistakes []models.UserWrongQuestion
-		query := database.DB.Where("userId = ? AND masteredAt IS NULL", userID)
+		query := database.DB.Where("userId = ? AND (masteredAt IS NULL OR masteredAt < '0001-01-02')", userID)
 		
 		if req.AttemptID != "" {
 			query = query.Where("attemptId = ?", req.AttemptID)

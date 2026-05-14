@@ -46,13 +46,24 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 		subMap[submissions[i].QuestionID] = &submissions[i]
 	}
 
-	// Check what wrong questions already exist for this attempt (idempotency)
+	// Idempotency: Check if THIS attempt has already been processed.
+	// We track by attemptId to allow re-processing if the same question
+	// was wrong in a DIFFERENT attempt (the UPSERT on userId+questionId handles that).
 	var existingCount int64
 	database.DB.Model(&models.UserWrongQuestion{}).Where("attemptId = ?", attempt.ID).Count(&existingCount)
-	if existingCount > 0 {
-		log.Printf("[WRONG-Q] attempt %s already processed (%d entries), skipping", attempt.ID, existingCount)
+	// Count how many questions in this test are NOT accepted
+	var expectedWrongCount int
+	for _, q := range questions {
+		sub, submitted := subMap[q.ID]
+		if !submitted || (sub.Verdict != "accepted" && sub.Verdict != "draft") {
+			expectedWrongCount++
+		}
+	}
+	if existingCount > 0 && int(existingCount) >= expectedWrongCount {
+		log.Printf("[WRONG-Q] attempt %s already fully processed (%d entries), skipping", attempt.ID, existingCount)
 		return
 	}
+	log.Printf("[WRONG-Q] Processing attempt %s: %d existing, %d expected wrong", attempt.ID, existingCount, expectedWrongCount)
 
 	for _, q := range questions {
 		sub, submitted := subMap[q.ID]
@@ -243,7 +254,7 @@ func updateUserTopicStats(userID string, testID string) {
 func GetUserWrongQuestions(c *gin.Context) {
 	userID, _ := c.Get("userID")
 
-	query := database.DB.Where("userId = ? AND masteredAt IS NULL OR masteredAt < '0001-01-02'", userID).
+	query := database.DB.Where("userId = ? AND (masteredAt IS NULL OR masteredAt < '0001-01-02')", userID).
 		Preload("Question").Preload("Test").
 		Order("createdAt DESC")
 
