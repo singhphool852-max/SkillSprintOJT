@@ -46,22 +46,24 @@ type Client struct {
 
 // Hub manages all connected chat clients and message broadcasting.
 type Hub struct {
-	mu         sync.RWMutex
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	history    []Message
+	mu          sync.RWMutex
+	clients     map[*Client]bool
+	userClients map[string]int // userID → connection count
+	broadcast   chan []byte
+	register    chan *Client
+	unregister  chan *Client
+	history     []Message
 }
 
 // NewHub creates a new chat hub.
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		history:    make([]Message, 0),
+		clients:     make(map[*Client]bool),
+		userClients: make(map[string]int),
+		broadcast:   make(chan []byte, 256),
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		history:     make([]Message, 0),
 	}
 }
 
@@ -72,6 +74,7 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
+			h.userClients[client.UserID]++
 			h.mu.Unlock()
 			h.broadcastOnlineCount()
 
@@ -82,6 +85,10 @@ func (h *Hub) Run() {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.Send)
+				h.userClients[client.UserID]--
+				if h.userClients[client.UserID] <= 0 {
+					delete(h.userClients, client.UserID)
+				}
 			}
 			h.mu.Unlock()
 			h.broadcastOnlineCount()
@@ -106,10 +113,10 @@ func (h *Hub) Run() {
 // broadcastOnlineCount sends online count to all connected clients.
 func (h *Hub) broadcastOnlineCount() {
 	h.mu.RLock()
-	count := len(h.clients)
+	count := len(h.userClients)
 	h.mu.RUnlock()
 
-	log.Printf("[CHAT] Broadcasting online count: %d", count)
+	log.Printf("[CHAT] Broadcasting online count: %d unique users", count)
 
 	event := ChatEvent{
 		Type:        "online_count",
@@ -168,11 +175,11 @@ func (h *Hub) GetHistory() []Message {
 	return result
 }
 
-// GetOnlineCount returns the current number of connected clients.
+// GetOnlineCount returns the current number of unique connected users.
 func (h *Hub) GetOnlineCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return len(h.clients)
+	return len(h.userClients)
 }
 
 // ServeWS handles WebSocket requests from clients.

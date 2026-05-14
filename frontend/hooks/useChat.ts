@@ -89,10 +89,24 @@ export function useChat(token: string | null) {
           console.log('[CHAT] 📨 Message received:', msg.type, msg)
           
           if (msg.type === 'message') {
-            setMessages((prev) => [...prev, msg])
+            setMessages((prev) => {
+              // Prevent duplicate messages
+              const isDuplicate = prev.some(
+                m => m.timestamp === msg.timestamp &&
+                     m.user_id === msg.user_id &&
+                     m.content === msg.content
+              )
+              if (isDuplicate) {
+                console.log('[CHAT] Duplicate message detected, skipping')
+                return prev
+              }
+              console.log('[CHAT] Adding message to state')
+              return [...prev, msg]
+            })
           }
           
           if (msg.type === 'online_count' || msg.online_count !== undefined) {
+            console.log('[CHAT] Updating online count:', msg.online_count)
             setOnlineCount(msg.online_count)
           }
           
