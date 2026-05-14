@@ -75,6 +75,19 @@ func StartAdaptiveTraining(c *gin.Context) {
 		query.Limit(targetCount).Find(&mistakes)
 		log.Printf("[RECOVERY] Found %d mistake(s) for user", len(mistakes))
 
+		// If no mistakes found in recovery/mistakes mode, return early with a clear response
+		// instead of falling through to random vault questions
+		if len(mistakes) == 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"sessionId":  "",
+				"questions":  []interface{}{},
+				"mode":       req.Mode,
+				"weakTopics": weakTopics,
+				"message":    "No pending wrong questions found. All mastered!",
+			})
+			return
+		}
+
 		for _, m := range mistakes {
 			tq := &models.TrainingQuestion{
 				Prompt:      m.QuestionTitle,
@@ -187,20 +200,22 @@ func StartAdaptiveTraining(c *gin.Context) {
 				database.DB.Order("RAND()").Where("topic = ?", searchTopic).Limit(limit).Find(&pool)
 			}
 			
-			// Global Fallback (Stage 5)
+			// Global Fallback (Stage 5) - only pull seeded or AI-generated questions, NOT recovery junk
 			if len(pool) < limit {
 				var fallbackPool []models.TrainingQuestion
-				database.DB.Order("RAND()").Limit(limit - len(pool)).Find(&fallbackPool)
+				database.DB.Where("source IN ?", []string{"seeded", "ai_adaptive", "ai_similar", "notes"}).
+					Order("RAND()").Limit(limit - len(pool)).Find(&fallbackPool)
 				pool = append(pool, fallbackPool...)
 			}
 			sessionQuestions = append(sessionQuestions, pool...)
 		}
 	}
 
-	// 4. Emergency Fallback (Stage 6) - If still zero questions, pick ANY from vault
+	// 4. Emergency Fallback (Stage 6) - If still zero questions, pick from curated vault only
 	if len(sessionQuestions) == 0 {
-		log.Printf("[TRAIN] CRITICAL: Session still empty. Attempting emergency global fallback.")
-		database.DB.Order("RAND()").Limit(targetCount).Find(&sessionQuestions)
+		log.Printf("[TRAIN] CRITICAL: Session still empty. Attempting emergency fallback (curated sources only).")
+		database.DB.Where("source IN ?", []string{"seeded", "ai_adaptive", "ai_similar", "notes"}).
+			Order("RAND()").Limit(targetCount).Find(&sessionQuestions)
 	}
 
 	log.Printf("[TRAIN] Final session size: %d", len(sessionQuestions))
