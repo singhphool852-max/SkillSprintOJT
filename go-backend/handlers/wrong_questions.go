@@ -93,7 +93,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 					"wrongCount":     existing.WrongCount + 1,
 					"correctStreak":  0, // Reset streak on fresh failure
 					"masteredAt":     nil, // Un-master if they fail it again
-					"pointsLost":     q.Points - subScore(sub),
+					"pointsLost":     float64(q.Points) - subScore(sub),
 					"pointsPossible": q.Points,
 				})
 			} else {
@@ -111,7 +111,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 					CorrectAnswer:  correctAnswer,
 					Verdict:        verdict,
 					WrongCount:     1,
-					PointsLost:     q.Points - subScore(sub),
+					PointsLost:     float64(q.Points) - subScore(sub),
 					PointsPossible: q.Points,
 				})
 			}
@@ -122,7 +122,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 	updateUserTopicStats(attempt.UserID, attempt.TestID)
 }
 
-func subScore(s *models.TestSubmission) int {
+func subScore(s *models.TestSubmission) float64 {
 	if s == nil { return 0 }
 	return s.Score
 }

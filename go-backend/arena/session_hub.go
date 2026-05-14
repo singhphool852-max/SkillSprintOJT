@@ -93,7 +93,7 @@ func (h *SessionHub) SendEvent(attemptID string, eventType string, data interfac
 }
 
 // BroadcastAutoSubmit notifies a user that their attempt was auto-submitted.
-func (h *SessionHub) BroadcastAutoSubmit(attemptID string, score int) {
+func (h *SessionHub) BroadcastAutoSubmit(attemptID string, score float64) {
 	h.SendEvent(attemptID, "auto_submit", map[string]interface{}{
 		"attemptId": attemptID,
 		"score":     score,

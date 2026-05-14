@@ -100,7 +100,7 @@ func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
 		subMap[submissions[i].QuestionID] = &submissions[i]
 	}
 
-	totalScore := 0
+	var totalScore float64
 	for _, q := range questions {
 		sub, exists := subMap[q.ID]
 		if !exists {
@@ -110,7 +110,7 @@ func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
 		if q.Type == "mcq" {
 			for _, opt := range q.MCQOptions {
 				if opt.ID == sub.SelectedOptionID && opt.IsCorrect {
-					sub.Score = q.Points
+					sub.Score = float64(q.Points)
 					sub.Verdict = "accepted"
 					break
 				}
@@ -153,7 +153,7 @@ func autoSubmitSingleAttempt(attempt models.TestAttempt, test models.Test) {
 		return
 	}
 
-	log.Printf("[AUTO-SUBMIT] SUCCESS: attempt=%s test=%s score=%d", freshAttempt.ID, test.ID, totalScore)
+	log.Printf("[AUTO-SUBMIT] SUCCESS: attempt=%s test=%s score=%.2f", freshAttempt.ID, test.ID, totalScore)
 
 	// Refresh attempt with committed values for post-commit side effects
 	freshAttempt.Score = totalScore

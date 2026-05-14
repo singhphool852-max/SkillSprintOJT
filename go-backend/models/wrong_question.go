@@ -21,7 +21,7 @@ type UserWrongQuestion struct {
 	UserAnswer     string    `gorm:"column:userAnswer;type:text" json:"userAnswer"`  // selected option text or code
 	CorrectAnswer  string    `gorm:"column:correctAnswer;type:text" json:"correctAnswer"`
 	Verdict        string    `gorm:"column:verdict" json:"verdict"`                 // "wrong_answer", "time_limit", "skipped", "compile_error"
-	PointsLost     int       `gorm:"column:pointsLost" json:"pointsLost"`
+	PointsLost     float64   `gorm:"column:pointsLost;type:decimal(10,2)" json:"pointsLost"`
 	PointsPossible int       `gorm:"column:pointsPossible" json:"pointsPossible"`
 	ReviewCount    int        `gorm:"column:reviewCount;default:0" json:"reviewCount"`
 	CorrectStreak  int        `gorm:"column:correctStreak;default:0" json:"correctStreak"` // Number of times answered correctly in training

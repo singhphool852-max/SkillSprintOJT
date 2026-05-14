@@ -60,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Logout failed", error)
     } finally {
+      // Clear token from localStorage
+      localStorage.removeItem('auth_token')
       setUser(null)
       router.push("/login")
     }

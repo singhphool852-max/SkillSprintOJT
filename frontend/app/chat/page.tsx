@@ -133,35 +133,6 @@ export default function ChatPage() {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto max-w-4xl space-y-4">
-          {/* Debug info */}
-          <div className="mb-4 border border-neon-cyan/30 bg-neon-cyan/5 p-3 font-mono text-xs">
-            <p>Connected: {isConnected ? 'YES' : 'NO'}</p>
-            <p>Messages count: {messages.length}</p>
-            <p>Online count: {onlineCount}</p>
-            <p>Token: {token ? 'EXISTS' : 'MISSING'}</p>
-            <button 
-              onClick={() => {
-                console.log('[CHAT] Manual connection test')
-                const wsBase = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
-                const wsUrl = `${wsBase}/ws/chat?token=${token}`
-                console.log('[CHAT] Attempting connection to:', wsUrl)
-                const testWs = new WebSocket(wsUrl)
-                testWs.onopen = () => console.log('[CHAT] TEST: Connected!')
-                testWs.onerror = (e) => console.error('[CHAT] TEST: Error', e)
-                testWs.onclose = (e) => console.log('[CHAT] TEST: Closed', e.code, e.reason)
-              }}
-              className="mt-2 border border-neon-cyan px-2 py-1 text-neon-cyan hover:bg-neon-cyan/10"
-            >
-              Test WebSocket Connection
-            </button>
-            <details className="mt-2">
-              <summary className="cursor-pointer text-neon-cyan">Show raw messages</summary>
-              <pre className="mt-2 max-h-40 overflow-auto text-[10px]">
-                {JSON.stringify(messages, null, 2)}
-              </pre>
-            </details>
-          </div>
-
           {messages.length === 0 && (
             <div className="text-center py-8">
               <p className="font-mono text-sm text-muted-foreground">
@@ -171,14 +142,11 @@ export default function ChatPage() {
           )}
 
           {messages.map((msg, idx) => {
-            console.log('[CHAT PAGE] Rendering message:', idx, msg)
             const isOwnMessage = msg.user_id === user.id
             const isSystemMessage = msg.type !== "message"
 
-            console.log('[CHAT PAGE] isSystemMessage:', isSystemMessage, 'type:', msg.type)
-
-            // Temporarily show ALL messages for debugging
-            // if (isSystemMessage) return null
+            // Skip system messages (user_joined, user_left, etc.)
+            if (isSystemMessage) return null
 
             return (
               <div
