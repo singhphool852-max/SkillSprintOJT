@@ -83,6 +83,11 @@ function LoginContent() {
         return
       }
 
+      // Store token for WebSocket use
+      if (data.token) {
+        localStorage.setItem('auth_token', data.token)
+      }
+
       await checkAuth()
       router.push("/")
     } catch (err) {
@@ -159,6 +164,11 @@ function LoginContent() {
         })
         
         if (loginRes.ok) {
+          const loginData = await loginRes.json()
+          // Store token for WebSocket use
+          if (loginData.token) {
+            localStorage.setItem('auth_token', loginData.token)
+          }
           await checkAuth()
           router.push("/")
           return
@@ -170,7 +180,12 @@ function LoginContent() {
         }
       }
 
-      // Login successful — sync state and redirect to hero
+      // Login successful — store token for WebSocket use
+      if (data.token) {
+        localStorage.setItem('auth_token', data.token)
+      }
+      
+      // Sync state and redirect to hero
       await checkAuth()
       router.push("/")
     } catch (err) {

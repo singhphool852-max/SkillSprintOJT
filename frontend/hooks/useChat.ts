@@ -21,6 +21,7 @@ export function useChat(token: string | null) {
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const reconnectAttemptsRef = useRef(0)
 
   // Load chat history on mount
   useEffect(() => {
@@ -36,6 +37,7 @@ export function useChat(token: string | null) {
         })
         if (res.ok) {
           const history = await res.json()
+          console.log('[CHAT] Loaded history:', history.length, 'messages')
           setMessages(history)
         }
       } catch (error) {
@@ -50,69 +52,84 @@ export function useChat(token: string | null) {
   const connect = useCallback(() => {
     console.log('[CHAT] connect() called, token:', token ? 'EXISTS' : 'NULL')
     
-    if (!token || wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('[CHAT] Skipping connection - token:', !!token, 'wsState:', wsRef.current?.readyState)
+    if (!token) {
+      console.log('[CHAT] No token available, cannot connect')
       return
     }
 
-    // Use the same API_URL as the rest of the app
-    const wsBase = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
-    const wsUrl = `${wsBase}/ws/chat?token=${token}`
-    
-    console.log('[CHAT] Connecting to:', wsUrl)
-    const ws = new WebSocket(wsUrl)
-
-    ws.onopen = () => {
-      console.log('[CHAT] WebSocket connected to:', wsUrl)
-      setIsConnected(true)
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('[CHAT] Already connected')
+      return
     }
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        console.log('[CHAT] Message received:', msg)
-        console.log('[CHAT] Message type:', msg.type)
-        console.log('[CHAT] Current messages array length:', messages.length)
-        
-        if (msg.type === 'message') {
-          console.log('[CHAT] Adding message to state:', msg)
-          setMessages((prev) => {
-            const newMessages = [...prev, msg]
-            console.log('[CHAT] New messages array length:', newMessages.length)
-            return newMessages
-          })
-        }
-        if (msg.type === 'online_count') {
-          console.log('[CHAT] Updating online count:', msg.online_count)
-          setOnlineCount(msg.online_count)
-        }
-        if (msg.type === 'user_joined' || msg.type === 'user_left') {
-          console.log('[CHAT] User event:', msg.type)
-          if (msg.online_count !== undefined) {
+    // Close existing connection if any
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+
+    // Build WebSocket URL with token as query parameter
+    const wsBase = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
+    const wsUrl = `${wsBase}/ws/chat?token=${encodeURIComponent(token)}`
+    
+    console.log('[CHAT] Connecting to:', wsUrl.replace(token, 'TOKEN_HIDDEN'))
+    
+    try {
+      const ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => {
+        console.log('[CHAT] ✅ WebSocket connected successfully')
+        setIsConnected(true)
+        reconnectAttemptsRef.current = 0
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data)
+          console.log('[CHAT] 📨 Message received:', msg.type, msg)
+          
+          if (msg.type === 'message') {
+            setMessages((prev) => [...prev, msg])
+          }
+          
+          if (msg.type === 'online_count' || msg.online_count !== undefined) {
             setOnlineCount(msg.online_count)
           }
+          
+          if (msg.type === 'user_joined' || msg.type === 'user_left') {
+            console.log('[CHAT] 👤 User event:', msg.type, msg.username)
+            if (msg.online_count !== undefined) {
+              setOnlineCount(msg.online_count)
+            }
+          }
+        } catch (e) {
+          console.error('[CHAT] ❌ Failed to parse message:', e, event.data)
         }
-      } catch (e) {
-        console.error('[CHAT] Failed to parse message:', e)
       }
+
+      ws.onerror = (err) => {
+        console.error('[CHAT] ❌ WebSocket error:', err)
+      }
+
+      ws.onclose = (e) => {
+        console.log('[CHAT] 🔌 WebSocket closed:', e.code, e.reason)
+        setIsConnected(false)
+        wsRef.current = null
+
+        // Attempt reconnect with exponential backoff
+        reconnectAttemptsRef.current++
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 10000)
+        console.log(`[CHAT] 🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`)
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect()
+        }, delay)
+      }
+
+      wsRef.current = ws
+    } catch (error) {
+      console.error('[CHAT] ❌ Failed to create WebSocket:', error)
     }
-
-    ws.onerror = (err) => {
-      console.error('[CHAT] WebSocket error:', err)
-    }
-
-    ws.onclose = (e) => {
-      console.log('[CHAT] WebSocket closed:', e.code, e.reason)
-      setIsConnected(false)
-      wsRef.current = null
-
-      // Attempt reconnect after 3 seconds
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect()
-      }, 3000)
-    }
-
-    wsRef.current = ws
   }, [token])
 
   // Connect on mount and when token changes
@@ -121,12 +138,13 @@ export function useChat(token: string | null) {
     connect()
 
     return () => {
-      console.log('[CHAT] Cleaning up WebSocket connection')
+      console.log('[CHAT] 🧹 Cleaning up WebSocket connection')
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
       if (wsRef.current) {
         wsRef.current.close()
+        wsRef.current = null
       }
     }
   }, [connect])
@@ -135,7 +153,7 @@ export function useChat(token: string | null) {
   const sendMessage = useCallback(
     (content: string, messageType: string = "text") => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        console.error("[CHAT] WebSocket not connected, readyState:", wsRef.current?.readyState)
+        console.error("[CHAT] ❌ Cannot send message - WebSocket not connected, readyState:", wsRef.current?.readyState)
         return
       }
 
@@ -146,7 +164,7 @@ export function useChat(token: string | null) {
         timestamp: new Date().toISOString(),
       }
 
-      console.log('[CHAT] Sending message:', event)
+      console.log('[CHAT] 📤 Sending message:', event)
       wsRef.current.send(JSON.stringify(event))
     },
     []
@@ -158,6 +176,8 @@ export function useChat(token: string | null) {
       if (!token) {
         throw new Error("Not authenticated")
       }
+
+      console.log('[CHAT] 📎 Uploading file:', file.name, file.type, file.size)
 
       const formData = new FormData()
       formData.append("file", file)
@@ -177,6 +197,7 @@ export function useChat(token: string | null) {
       }
 
       const data = await res.json()
+      console.log('[CHAT] ✅ File uploaded:', data.url)
 
       // Determine message type based on file type
       const messageType = file.type.startsWith("image/") ? "image" : "pdf"
@@ -190,6 +211,7 @@ export function useChat(token: string | null) {
           file_name: data.filename,
           timestamp: new Date().toISOString(),
         }
+        console.log('[CHAT] 📤 Sending file message:', event)
         wsRef.current.send(JSON.stringify(event))
       }
     },
