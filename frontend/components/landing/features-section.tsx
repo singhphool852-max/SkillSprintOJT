@@ -1,49 +1,49 @@
 "use client"
 
-import { Activity, Brain, Clock, Ghost, Swords, Target, Trophy, Zap } from "lucide-react"
+import { Activity, Brain, Database, Swords, Target, Trophy, Zap } from "lucide-react"
 
 const features = [
   {
-    icon: Swords,
-    title: "LIVE ARENAS",
-    description: "Real-time quiz battles against live opponents. Fast-paced, high-stakes knowledge warfare.",
+    icon: Brain,
+    title: "ADAPTIVE TRAINING",
+    description: "AI-driven sessions that evolve with your performance. Targeting weak topics to ensure technical mastery.",
     color: "cyan" as const,
     tag: "CORE",
   },
   {
-    icon: Clock,
-    title: "ARENA DRILLS",
-    description: "30-second rapid-fire drill sessions. Pure speed, pure accuracy, zero downtime.",
+    icon: Zap,
+    title: "RECOVERY MODE",
+    description: "Systematically re-master previously failed questions. Turn technical blind spots into tactical advantages.",
     color: "pink" as const,
-    tag: "DAILY",
+    tag: "RECOVERY",
   },
   {
     icon: Trophy,
-    title: "RANKED SYSTEM",
-    description: "Climb from Bronze to Apex. Every answer counts toward your global ranking.",
+    title: "RANKED LADDER",
+    description: "Climb the global leaderboard from Rookie to Apex tier. Gain prestige as you conquer technical challenges.",
     color: "yellow" as const,
     tag: "COMPETE",
   },
   {
-    icon: Ghost,
-    title: "GHOST MODE",
-    description: "Race against your past self. Watch your ghost replay and shatter personal records.",
+    icon: Activity,
+    title: "NEURAL SYNTHESIS",
+    description: "Sync your personal notes or PDFs. Our AI extracts core concepts and generates custom training drills.",
     color: "cyan" as const,
-    tag: "REPLAY",
+    tag: "SYNC",
   },
   {
-    icon: Brain,
-    title: "SKILL METRICS",
-    description: "Track reaction speed, accuracy patterns, and cognitive performance across categories.",
+    icon: Target,
+    title: "FULL ANALYTICS",
+    description: "Track accuracy, reaction speed, and mastery trends. Data-driven insights to optimize your learning path.",
     color: "pink" as const,
     tag: "DATA",
   },
   {
-    icon: Target,
-    title: "ACHIEVEMENTS",
-    description: "Unlock rare combat badges. Complete streak challenges and milestone objectives.",
+    icon: Database,
+    title: "TECHNICAL VAULT",
+    description: "A secure repository of diverse coding and MCQ questions covering DSA, DBMS, OS, and JavaScript.",
     color: "yellow" as const,
-    tag: "UNLOCK",
+    tag: "VAULT",
   },
 ]
 
