@@ -231,10 +231,28 @@ Do NOT skip any testcase.
 Do NOT limit to 2 or 5 testcases.
 If there are 50 testcases in the table, extract all 50.
 
-For two-parameter problems like Two Sum where input has both an array and a target, format the input as:
-"nums = [2, 7, 11, 15]\ntarget = 9"
+TESTCASE FORMAT RULES (CRITICAL):
+Format testcase input as plain stdin data that a competitive programming solution reads via input().
+NEVER use variable assignment format like: nums = [2, 7, 11, 15]
+ALWAYS use plain numbers separated by spaces and newlines.
 
-And expected output as: "[0, 1]"
+For array problems (e.g., Find Maximum Element):
+Line 1: n (array size)
+Line 2: space-separated elements
+Example input: "4\n-1 -2 -3 -4"
+Example output: "-1"
+
+For two-parameter problems (e.g., Two Sum):
+Line 1: n (array size)
+Line 2: space-separated array elements
+Line 3: target value
+Example input: "4\n2 7 11 15\n9"
+Example output: "0 1"
+
+For string problems:
+Line 1: the string
+Example input: "hello"
+Example output: "5"
 
 4. COUNT
 Generate exactly as many questions as exist in the document.
@@ -268,12 +286,12 @@ Return ONLY this JSON object, no markdown, no extra text:
       "description": "full problem statement exactly as written",
       "points": 20,
       "constraints": "constraints exactly as written",
-      "starterCode": "def two_sum(nums, target):\n    pass",
+      "starterCode": "n = int(input())\narr = list(map(int, input().split()))\n# Your solution here\nprint()",
       "timeLimitMs": 2000,
       "testCases": [
-        {"input": "nums = [2, 7, 11, 15]\ntarget = 9", "expectedOutput": "[0, 1]", "isHidden": false},
-        {"input": "nums = [3, 2, 4]\ntarget = 6", "expectedOutput": "[1, 2]", "isHidden": false},
-        {"input": "nums = [3, 3]\ntarget = 6", "expectedOutput": "[0, 1]", "isHidden": true}
+        {"input": "4\n2 7 11 15\n9", "expectedOutput": "0 1", "isHidden": false},
+        {"input": "3\n3 2 4\n6", "expectedOutput": "1 2", "isHidden": false},
+        {"input": "2\n3 3\n6", "expectedOutput": "0 1", "isHidden": true}
       ]
     }
   ]
