@@ -160,11 +160,18 @@ function TrainPlayContent({ params }: { params: { id: string } }) {
           if (typeof normalizedOptions === "string") {
             try { normalizedOptions = JSON.parse(normalizedOptions) } catch { normalizedOptions = [] }
           }
-          if ((q.type === "mcq" || q.Type === "mcq") && Array.isArray(normalizedOptions)) {
+          // Normalize type early so option normalization uses the correct type
+          const qType = (q.type || q.Type || "mcq").toLowerCase()
+          if (qType === "mcq" && Array.isArray(normalizedOptions) && normalizedOptions.length > 0) {
             normalizedOptions = normalizedOptions.map((optText: any, idx: number) => {
-              if (typeof optText === "object" && optText !== null) return optText
-              return { id: `OPT_${q.id || index}_${idx}`, text: String(optText || "") }
+              // Already normalized {id, text} object
+              if (typeof optText === "object" && optText !== null && optText.text !== undefined) return optText
+              // Plain string — wrap it
+              const text = typeof optText === "object" ? JSON.stringify(optText) : String(optText || "")
+              return { id: `OPT_${q.id || q.ID || index}_${idx}`, text }
             })
+          } else if (qType === "mcq" && (!Array.isArray(normalizedOptions) || normalizedOptions.length === 0)) {
+            normalizedOptions = []
           }
 
           let normalizedTestCases = q.testCases || q.TestCases
@@ -175,7 +182,7 @@ function TrainPlayContent({ params }: { params: { id: string } }) {
           return {
             id:          String(q.id || q.ID || index),
             prompt:      q.prompt || q.Prompt || "No prompt provided",
-            type:        (q.type || q.Type || "mcq").toLowerCase(),
+            type:        qType || "mcq",
             options:     Array.isArray(normalizedOptions) ? normalizedOptions : [],
             explanation: q.explanation || q.Explanation || "",
             starterCode: q.starterCode || q.StarterCode || "",

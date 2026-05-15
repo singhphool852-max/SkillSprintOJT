@@ -68,7 +68,7 @@ export function QuestionRenderer({ question, answer, onChange, isLocked, result 
                 className={`p-5 text-left border transition-all ${borderClass} ${isLocked ? 'cursor-default' : ''}`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-sm text-foreground">{opt.text}</span>
+                  <span className="font-mono text-sm text-foreground">{opt.text || String(opt.id)}</span>
                   {isLocked && isCorrect && <div className="h-1.5 w-1.5 rounded-full bg-neon-green animate-pulse" />}
                 </div>
               </button>
