@@ -42,9 +42,11 @@ export default function AdminAnalyticsPage() {
   useEffect(() => {
     async function fetchStats() {
       try {
+        console.log('[ANALYTICS] Fetching stats from:', `${API}/api/admin/analytics`)
         const res = await fetch(`${API}/api/admin/analytics`, { credentials: "include" })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
+        console.log('[ANALYTICS] Stats received:', data)
         setStats(data ?? {})
         setError(null)
       } catch (e) {
@@ -181,9 +183,15 @@ function ViolationsTable() {
   useEffect(() => {
     async function fetchViolations() {
       try {
+        console.log('[VIOLATIONS] Fetching from:', `${API_URL}/api/admin/analytics/mistakes`)
         const res = await fetch(`${API_URL}/api/admin/analytics/mistakes`, { credentials: "include" })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          console.error('[VIOLATIONS] HTTP error:', res.status)
+          throw new Error(`HTTP ${res.status}`)
+        }
         const data = await res.json()
+        console.log('[VIOLATIONS] Data received:', data)
+        console.log('[VIOLATIONS] Mistakes array:', data?.mistakes)
         setViolations(data?.mistakes ?? [])
       } catch (e) {
         console.error("[VIOLATIONS] fetch failed:", e)
