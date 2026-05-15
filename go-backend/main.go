@@ -127,6 +127,7 @@ func main() {
 	// Leaderboard Routes
 	api.GET("/attempts/leaderboard", handlers.GetLeaderboard)
 	api.GET("/leaderboard/global", handlers.GetGlobalLeaderboard)
+	api.GET("/leaderboard/debug", handlers.GetLeaderboardDebug) // Debug endpoint
 
 	// Public Topics (for Arena)
 	api.GET("/topics", handlers.ListPublicTopics)

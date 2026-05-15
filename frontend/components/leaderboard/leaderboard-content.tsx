@@ -75,20 +75,40 @@ export function LeaderboardContent() {
   const [data, setData]       = useState<LeaderboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchLeaderboard = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/leaderboard/global`, { credentials: "include" })
+      console.log('[Leaderboard] Fetching from:', `${API_URL}/api/leaderboard/global`)
+      const res = await fetch(`${API_URL}/api/leaderboard/global`, { 
+        credentials: "include",
+        headers: {
+          'Accept': 'application/json',
+        }
+      })
+      
+      console.log('[Leaderboard] Response status:', res.status)
+      
       if (res.ok) {
         const json = await res.json()
+        console.log('[Leaderboard] Raw response:', json)
+        
         // Normalise: entries may be null from backend
         const raw: LeaderboardEntry[] = json.entries || []
+        console.log('[Leaderboard] Entries count:', raw.length)
+        
         const withTiers = assignTiers(raw)
         setData({ entries: withTiers, totalUsers: json.totalUsers ?? withTiers.length })
         setLastUpdated(new Date())
+        setError(null)
+      } else {
+        const errorText = await res.text()
+        console.error('[Leaderboard] Error response:', errorText)
+        setError(`Server error: ${res.status}`)
       }
     } catch (err) {
       console.error("[Leaderboard] fetch error:", err)
+      setError(err instanceof Error ? err.message : 'Network error')
     } finally {
       setLoading(false)
     }
@@ -246,8 +266,18 @@ export function LeaderboardContent() {
               )
             })}
             {entries.length === 0 && (
-              <div className="py-20 text-center text-muted-foreground font-mono text-xs">
-                NO PERFORMANCE DATA RECORDED YET.
+              <div className="py-20 text-center">
+                <p className="text-muted-foreground font-mono text-xs mb-4">
+                  NO PERFORMANCE DATA RECORDED YET.
+                </p>
+                {error && (
+                  <p className="text-neon-pink font-mono text-xs">
+                    Error: {error}
+                  </p>
+                )}
+                <p className="text-muted-foreground/50 font-mono text-[10px] mt-2">
+                  Check browser console for details
+                </p>
               </div>
             )}
           </div>

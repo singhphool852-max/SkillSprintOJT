@@ -17,6 +17,11 @@ type Attempt struct {
 	Quiz Quiz `gorm:"foreignKey:QuizID;constraint:OnDelete:CASCADE" json:"quiz,omitempty"`
 }
 
+// TableName ensures the table name exactly matches what's in the database
+func (Attempt) TableName() string {
+	return "attempts"
+}
+
 type AttemptAnswer struct {
 	ID               string `gorm:"type:varchar(191);primaryKey;column:id" json:"id"`
 	AttemptID        string `gorm:"type:varchar(191);index;column:attemptId" json:"attemptId"`
