@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ══════════════════════════════════════════════
@@ -29,43 +31,54 @@ type GlobalLeaderboardEntry struct {
 // Ranking logic: total score DESC, then earliest completedAt as tiebreak (first to submit wins).
 func GetGlobalLeaderboard(c *gin.Context) {
 	type rawRow struct {
-		UserID          string  `json:"userId"`
-		Username        string  `json:"username"`
-		TotalScore      int     `json:"totalScore"`
-		TestsCompleted  int     `json:"testsCompleted"`
-		AvgScore        float64 `json:"avgScore"`
-		HighScore       int     `json:"highScore"`
-		TotalMaxScore   int     `json:"totalMaxScore"`
-		EarliestSubmit  string  `json:"earliestSubmit"`
+		UserID          string  `gorm:"column:user_id"`
+		Username        string  `gorm:"column:username"`
+		TotalScore      int     `gorm:"column:total_score"`
+		TestsCompleted  int     `gorm:"column:tests_completed"`
+		AvgScore        float64 `gorm:"column:avg_score"`
+		HighScore       int     `gorm:"column:high_score"`
+		EarliestSubmit  string  `gorm:"column:earliest_submit"`
 	}
 
 	var rows []rawRow
-	database.DB.Table("attempts").
+	query := database.DB.Table("attempts").
 		Select("attempts.userId as user_id, "+
 			"user.username, "+
 			"SUM(attempts.score) as total_score, "+
 			"COUNT(DISTINCT attempts.id) as tests_completed, "+
 			"AVG(attempts.score) as avg_score, "+
 			"MAX(attempts.score) as high_score, "+
-			"SUM(quizzes.maxScore) as total_max_score, "+
 			"MIN(attempts.completedAt) as earliest_submit").
 		Joins("JOIN user ON user.id = attempts.userId").
-		Joins("LEFT JOIN quizzes ON quizzes.id = attempts.quizId").
 		Where("attempts.completedAt IS NOT NULL").
 		Where("user.role != 'admin'").
 		Group("attempts.userId, user.username").
 		Order("total_score DESC, earliest_submit ASC").
-		Limit(100).
-		Scan(&rows)
+		Limit(100)
+	
+	// Debug: Log the SQL query
+	sqlStr := query.ToSQL(func(tx *gorm.DB) *gorm.DB {
+		return tx.Scan(&rows)
+	})
+	log.Printf("[Leaderboard] SQL: %s", sqlStr)
+	
+	if err := query.Scan(&rows).Error; err != nil {
+		log.Printf("[Leaderboard] Query error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch leaderboard"})
+		return
+	}
+	
+	log.Printf("[Leaderboard] Found %d users", len(rows))
 
 	entries := make([]GlobalLeaderboardEntry, len(rows))
 	totalUsers := len(rows)
 
 	for i, r := range rows {
 		rank := i + 1
+		// Calculate average percentage based on total questions
 		avgPct := float64(0)
-		if r.TotalMaxScore > 0 {
-			avgPct = float64(r.TotalScore) / float64(r.TotalMaxScore) * 100
+		if r.TestsCompleted > 0 {
+			avgPct = r.AvgScore // This is already the average score per test
 		}
 
 		// Assign same tier to users with same rank (ties share a tier)
@@ -98,6 +111,8 @@ func GetGlobalLeaderboard(c *gin.Context) {
 			HighScore:      r.HighScore,
 			Tier:           tier,
 		}
+		
+		log.Printf("[Leaderboard] Entry %d: User=%s Score=%d Tests=%d", rank, r.Username, r.TotalScore, r.TestsCompleted)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
