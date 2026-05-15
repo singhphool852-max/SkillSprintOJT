@@ -9,23 +9,7 @@ import { API_URL } from "@/lib/api-config"
 import { ErrorBoundary } from "@/components/train/ErrorBoundary"
 
 // ---------------------------------------------------------------------------
-// SearchParamsReader — isolated component so useSearchParams() is always
-// inside a <Suspense> boundary (required by Next.js 15 for static builds).
-// ---------------------------------------------------------------------------
-function SearchParamsReader({
-  onParams,
-}: {
-  onParams: (p: URLSearchParams) => void
-}) {
-  const sp = useSearchParams()
-  useEffect(() => {
-    onParams(sp)
-  }, [sp, onParams])
-  return null
-}
-
-// ---------------------------------------------------------------------------
-// Loading screen — used as Suspense fallback and during data fetch.
+// LoadingScreen — defined before use, shared by Suspense fallback + loading state
 // ---------------------------------------------------------------------------
 function LoadingScreen() {
   return (
@@ -47,43 +31,28 @@ function LoadingScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Page — plain client component, params typed as { id: string } (no Promise).
+// Inner — calls useSearchParams(), must be inside a <Suspense> boundary.
+// All logic lives here. Receives id as a plain string prop.
 // ---------------------------------------------------------------------------
-export default function TrainingPlayPage({
-  params,
-}: {
-  params: { id: string }
-}) {
-  const { id } = params
+function TrainingPlayInner({ id }: { id: string }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Search-param state — populated by SearchParamsReader once it mounts.
-  const [topic, setTopic] = useState("General")
-  const [mode, setMode] = useState("Standard")
-  const [difficulty, setDifficulty] = useState("Medium")
-  const [count, setCount] = useState(10)
-  const [paramsReady, setParamsReady] = useState(false)
+  const topic      = searchParams.get("topic")      || "General"
+  const mode       = searchParams.get("mode")       || "Standard"
+  const difficulty = searchParams.get("difficulty") || "Medium"
+  const count      = parseInt(searchParams.get("count") || "10")
 
-  const [questions, setQuestions] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [questions,    setQuestions]    = useState<any[]>([])
+  const [loading,      setLoading]      = useState(true)
   const [offlineStatus, setOfflineStatus] = useState<string | null>(null)
-  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const [summary,      setSummary]      = useState<string | undefined>(undefined)
 
-  // Called by SearchParamsReader after it reads the URL search params.
-  const handleParams = (sp: URLSearchParams) => {
-    setTopic(sp.get("topic") || "General")
-    setMode(sp.get("mode") || "Standard")
-    setDifficulty(sp.get("difficulty") || "Medium")
-    setCount(parseInt(sp.get("count") || "10"))
-    setParamsReady(true)
-  }
-
-  // Read sessionStorage only on the client.
+  // sessionStorage — guarded for SSR safety
   useEffect(() => {
     if (typeof window === "undefined") return
     const isNotesMode = mode.toUpperCase() === "NOTES_SYNC_MODE"
     const savedSummary = sessionStorage.getItem("skillsprint_notes_summary")
-
     if (isNotesMode && savedSummary) {
       setSummary(savedSummary)
     } else {
@@ -108,7 +77,7 @@ export default function TrainingPlayPage({
       let apiData: any
 
       if (isUUID && isRecovery) {
-        // PATH C: Special Recovery Path from Attempt ID
+        // PATH C: Recovery from Attempt ID
         const res = await fetch(`${API_URL}/api/training/adaptive/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -169,7 +138,7 @@ export default function TrainingPlayPage({
       console.log("[TrainPlay] API Success:", apiData)
 
       const rawQuestions = apiData.questions || apiData.Questions || []
-      const sessionId = apiData.session_id || apiData.sessionId || apiData.SessionID || id
+      const sessionId    = apiData.session_id || apiData.sessionId || apiData.SessionID || id
 
       if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
         console.warn("[TrainPlay] No questions found in payload:", apiData)
@@ -203,18 +172,18 @@ export default function TrainingPlayPage({
           }
 
           return {
-            id: String(q.id || q.ID || index),
-            prompt: q.prompt || q.Prompt || "No prompt provided",
-            type: (q.type || q.Type || "mcq").toLowerCase(),
-            options: Array.isArray(normalizedOptions) ? normalizedOptions : [],
-            explanation: q.explanation || q.Explanation || "",
-            starterCode: q.starterCode || q.StarterCode || "",
-            constraints: q.constraints || q.Constraints || "",
-            testCases: Array.isArray(normalizedTestCases) ? normalizedTestCases : [],
-            maxScore: 10,
-            _answer: q.answer || q.Answer || "",
-            _source: q.source || q.Source || "unknown",
-            _sessionId: sessionId,
+            id:           String(q.id || q.ID || index),
+            prompt:       q.prompt || q.Prompt || "No prompt provided",
+            type:         (q.type || q.Type || "mcq").toLowerCase(),
+            options:      Array.isArray(normalizedOptions) ? normalizedOptions : [],
+            explanation:  q.explanation || q.Explanation || "",
+            starterCode:  q.starterCode || q.StarterCode || "",
+            constraints:  q.constraints || q.Constraints || "",
+            testCases:    Array.isArray(normalizedTestCases) ? normalizedTestCases : [],
+            maxScore:     10,
+            _answer:      q.answer || q.Answer || "",
+            _source:      q.source || q.Source || "unknown",
+            _sessionId:   sessionId,
           }
         })
         .filter(Boolean)
@@ -230,27 +199,15 @@ export default function TrainingPlayPage({
     }
   }
 
-  // Only fetch once search params are available.
   useEffect(() => {
-    if (paramsReady) fetchQuestions()
+    fetchQuestions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, paramsReady])
+  }, [id])
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-  if (loading) {
-    return (
-      <>
-        {/* SearchParamsReader must always be mounted so it can set paramsReady */}
-        <Suspense fallback={null}>
-          <SearchParamsReader onParams={handleParams} />
-        </Suspense>
-        <LoadingScreen />
-      </>
-    )
-  }
+  // --- Loading state ---
+  if (loading) return <LoadingScreen />
 
+  // --- Empty state ---
   if (questions.length === 0) {
     const isMistakesMode =
       mode.toUpperCase() === "MISTAKES" ||
@@ -258,98 +215,105 @@ export default function TrainingPlayPage({
       mode.toUpperCase() === "RECOVERY"
 
     return (
-      <>
-        <Suspense fallback={null}>
-          <SearchParamsReader onParams={handleParams} />
-        </Suspense>
-        <div className="flex flex-col items-center justify-center min-h-screen gap-6 bg-deep-bg p-4 relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent animate-pulse" />
-
-          {isMistakesMode ? (
-            <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-500">
-              <div className="h-20 w-20 rounded-full border-2 border-neon-cyan/20 flex items-center justify-center relative">
-                <ShieldCheck className="h-10 w-10 text-neon-cyan" />
-                <div className="absolute inset-0 rounded-full border-2 border-neon-cyan animate-ping opacity-20" />
-              </div>
-              <div className="text-center max-w-md">
-                <h2 className="text-2xl font-bold font-mono text-foreground uppercase tracking-widest mb-2">
-                  NEURAL VAULT SECURED
-                </h2>
-                <p className="text-sm text-muted-foreground font-mono uppercase leading-relaxed">
-                  Great job! You have no pending recovery questions. Your mastery of this topic is currently optimal.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 w-full max-w-xs">
-                <button
-                  onClick={() => router.push("/train")}
-                  className="w-full px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2 group"
-                >
-                  <ArrowLeft className="h-3 w-3 group-hover:-translate-x-1 transition-transform" /> Return to Training Hub
-                </button>
-              </div>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-6 bg-deep-bg p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent animate-pulse" />
+        {isMistakesMode ? (
+          <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-500">
+            <div className="h-20 w-20 rounded-full border-2 border-neon-cyan/20 flex items-center justify-center relative">
+              <ShieldCheck className="h-10 w-10 text-neon-cyan" />
+              <div className="absolute inset-0 rounded-full border-2 border-neon-cyan animate-ping opacity-20" />
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-6">
-              <ShieldAlert className="h-12 w-12 text-neon-pink" />
-              <div className="text-center">
-                <h2 className="text-xl font-bold font-mono text-foreground uppercase tracking-widest">
-                  SESSION INITIALIZATION FAILED
-                </h2>
-                <p className="text-xs text-muted-foreground font-mono mt-2 uppercase">
-                  Neural Vault response was empty or datasets are currently unavailable.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 w-full max-w-xs">
-                <button
-                  onClick={() => fetchQuestions()}
-                  className="w-full px-6 py-3 border border-neon-cyan/30 bg-neon-cyan/5 text-xs font-mono font-bold tracking-widest text-neon-cyan uppercase hover:bg-neon-cyan/10 transition-all flex items-center justify-center gap-2"
-                >
-                  <RefreshCcw className="h-3 w-3" /> Retry Initialization
-                </button>
-                <button
-                  onClick={() => router.push("/train")}
-                  className="w-full px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-muted-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="h-3 w-3" /> Return to Hub
-                </button>
-              </div>
+            <div className="text-center max-w-md">
+              <h2 className="text-2xl font-bold font-mono text-foreground uppercase tracking-widest mb-2">
+                NEURAL VAULT SECURED
+              </h2>
+              <p className="text-sm text-muted-foreground font-mono uppercase leading-relaxed">
+                Great job! You have no pending recovery questions. Your mastery of this topic is currently optimal.
+              </p>
             </div>
-          )}
-        </div>
-      </>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button
+                onClick={() => router.push("/train")}
+                className="w-full px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2 group"
+              >
+                <ArrowLeft className="h-3 w-3 group-hover:-translate-x-1 transition-transform" /> Return to Training Hub
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-6">
+            <ShieldAlert className="h-12 w-12 text-neon-pink" />
+            <div className="text-center">
+              <h2 className="text-xl font-bold font-mono text-foreground uppercase tracking-widest">
+                SESSION INITIALIZATION FAILED
+              </h2>
+              <p className="text-xs text-muted-foreground font-mono mt-2 uppercase">
+                Neural Vault response was empty or datasets are currently unavailable.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button
+                onClick={() => fetchQuestions()}
+                className="w-full px-6 py-3 border border-neon-cyan/30 bg-neon-cyan/5 text-xs font-mono font-bold tracking-widest text-neon-cyan uppercase hover:bg-neon-cyan/10 transition-all flex items-center justify-center gap-2"
+              >
+                <RefreshCcw className="h-3 w-3" /> Retry Initialization
+              </button>
+              <button
+                onClick={() => router.push("/train")}
+                className="w-full px-6 py-3 border border-panel-border bg-panel-bg/50 text-xs font-mono font-bold tracking-widest text-muted-foreground uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="h-3 w-3" /> Return to Hub
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     )
   }
 
+  // --- Success state ---
   return (
-    <>
-      <Suspense fallback={null}>
-        <SearchParamsReader onParams={handleParams} />
-      </Suspense>
-      <ErrorBoundary>
-        <ProtectedRoute>
-          <div className="relative">
-            {offlineStatus && (
-              <div className="fixed top-20 right-8 z-50 animate-pulse">
-                <div className="flex items-center gap-2 px-3 py-2 bg-neon-yellow/10 border border-neon-yellow/40 backdrop-blur">
-                  <ShieldCheck className="h-4 w-4 text-neon-yellow" />
-                  <span className="font-mono text-[9px] text-neon-yellow uppercase tracking-widest font-black max-w-[200px] truncate">
-                    {offlineStatus}
-                  </span>
-                </div>
+    <ErrorBoundary>
+      <ProtectedRoute>
+        <div className="relative">
+          {offlineStatus && (
+            <div className="fixed top-20 right-8 z-50 animate-pulse">
+              <div className="flex items-center gap-2 px-3 py-2 bg-neon-yellow/10 border border-neon-yellow/40 backdrop-blur">
+                <ShieldCheck className="h-4 w-4 text-neon-yellow" />
+                <span className="font-mono text-[9px] text-neon-yellow uppercase tracking-widest font-black max-w-[200px] truncate">
+                  {offlineStatus}
+                </span>
               </div>
-            )}
-            <TrainingSolver
-              initialQuestions={questions}
-              topic={topic + (offlineStatus ? " (Offline)" : "")}
-              mode={mode}
-              difficulty={difficulty}
-              count={offlineStatus ? questions.length : count}
-              arenaId={id}
-              summary={summary}
-            />
-          </div>
-        </ProtectedRoute>
-      </ErrorBoundary>
-    </>
+            </div>
+          )}
+          <TrainingSolver
+            initialQuestions={questions}
+            topic={topic + (offlineStatus ? " (Offline)" : "")}
+            mode={mode}
+            difficulty={difficulty}
+            count={offlineStatus ? questions.length : count}
+            arenaId={id}
+            summary={summary}
+          />
+        </div>
+      </ProtectedRoute>
+    </ErrorBoundary>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Default export — thin shell that provides the required Suspense boundary
+// around TrainingPlayInner (which calls useSearchParams).
+// params is typed as { id: string } — no Promise, no React.use().
+// ---------------------------------------------------------------------------
+export default function TrainingPlayPage({
+  params,
+}: {
+  params: { id: string }
+}) {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <TrainingPlayInner id={params.id} />
+    </Suspense>
   )
 }
