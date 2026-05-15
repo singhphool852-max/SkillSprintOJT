@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -67,12 +68,55 @@ func StartAdaptiveTraining(c *gin.Context) {
 		
 		// For global mistakes, prioritize worst failures. For specific recovery, show in order.
 		if req.AttemptID == "" {
-			query = query.Order("wrongCount DESC, reviewCount ASC, createdAt DESC")
+			var allMistakes []models.UserWrongQuestion
+			query.Find(&allMistakes)
+
+			// Calculate priority score for each mistake
+			type scoredMistake struct {
+				Mistake models.UserWrongQuestion
+				Score   int
+			}
+			var scored []scoredMistake
+			now := time.Now()
+
+			for _, m := range allMistakes {
+				score := m.WrongCount * 5
+				score -= m.CorrectStreak * 2
+
+				// Recent failure weight (last 24 hours)
+				if now.Sub(m.CreatedAt) < 24*time.Hour || (m.LastReviewedAt != nil && now.Sub(*m.LastReviewedAt) < 24*time.Hour) {
+					score += 5
+				}
+
+				// Weak topic weight
+				for _, wt := range weakTopics {
+					if wt.TopicID == m.TopicID {
+						if wt.AccuracyPercent < 40 {
+							score += 10
+						} else if wt.AccuracyPercent < 60 {
+							score += 5
+						}
+						break
+					}
+				}
+
+				scored = append(scored, scoredMistake{Mistake: m, Score: score})
+			}
+
+			// Sort by priority score DESC
+			sort.Slice(scored, func(i, j int) bool {
+				return scored[i].Score > scored[j].Score
+			})
+
+			for i := 0; i < len(scored) && i < targetCount; i++ {
+				mistakes = append(mistakes, scored[i].Mistake)
+				log.Printf("[ADAPTIVE] Selected mistake %s with priority score %d", scored[i].Mistake.QuestionID, scored[i].Score)
+			}
 		} else {
-			query = query.Order("createdAt ASC")
+			query = query.Order("createdAt ASC").Limit(targetCount)
+			query.Find(&mistakes)
 		}
 		
-		query.Limit(targetCount).Find(&mistakes)
 		log.Printf("[RECOVERY] Found %d mistake(s) for user", len(mistakes))
 
 		// If no mistakes found in recovery/mistakes mode, return early with a clear response
@@ -281,11 +325,32 @@ func SubmitAdaptiveAnswer(c *gin.Context) {
 	}
 
 	// 1. If correct, and it was a "Mistake", we might mark it as reviewed or mastered
-	if sub.IsCorrect {
-		// Try to find if this question exists in the user's wrong list
-		// Note: This check is heuristic since TrainingQuestions don't always map 1:1 to TestQuestions
-		// but we can match by title/prompt if needed.
-		// For now, we'll just track that the user is improving in the topic.
+	// Fetch the TrainingQuestion to map it back to the original mistake
+	var tq models.TrainingQuestion
+	if err := database.DB.Where("id = ?", sub.QuestionID).First(&tq).Error; err == nil {
+		if tq.Source == "recovery" {
+			var wq models.UserWrongQuestion
+			// Match by userID and prompt (since it's a snapshot)
+			if err := database.DB.Where("userId = ? AND questionTitle = ?", userID, tq.Prompt).First(&wq).Error; err == nil {
+				if sub.IsCorrect {
+					wq.CorrectStreak++
+					log.Printf("[ADAPTIVE] Correct streak incremented to %d for question %s", wq.CorrectStreak, wq.QuestionID)
+					
+					// Mastery threshold check
+					if wq.CorrectStreak >= 2 {
+						now := time.Now()
+						wq.MasteredAt = &now
+						log.Printf("[ADAPTIVE] Question %s MASTERED!", wq.QuestionID)
+					}
+				} else {
+					wq.CorrectStreak = 0 // Reset streak
+					wq.WrongCount++
+					log.Printf("[ADAPTIVE] Streak reset and wrong count incremented for question %s", wq.QuestionID)
+				}
+				
+				database.DB.Save(&wq)
+			}
+		}
 	}
 
 	// 2. Update Topic Stats (incrementally)
