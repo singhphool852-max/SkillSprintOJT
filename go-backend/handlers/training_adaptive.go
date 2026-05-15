@@ -5,6 +5,7 @@ import (
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/services"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -15,6 +16,38 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// extractUserID safely extracts userID from gin context and converts to string
+// Handles multiple possible types: string, uint, int, float64
+func extractUserID(c *gin.Context) (string, error) {
+	userIDRaw, exists := c.Get("userID")
+	if !exists {
+		return "", fmt.Errorf("userID not found in context")
+	}
+
+	var userIDStr string
+	switch v := userIDRaw.(type) {
+	case string:
+		userIDStr = v
+	case uint:
+		userIDStr = fmt.Sprintf("%d", v)
+	case int:
+		userIDStr = fmt.Sprintf("%d", v)
+	case float64:
+		userIDStr = fmt.Sprintf("%d", uint(v))
+	case int64:
+		userIDStr = fmt.Sprintf("%d", v)
+	default:
+		userIDStr = fmt.Sprintf("%v", v)
+	}
+
+	if userIDStr == "" {
+		return "", fmt.Errorf("userID is empty")
+	}
+
+	log.Printf("[Auth] userID extracted: raw=%v type=%T resolved=%s", userIDRaw, userIDRaw, userIDStr)
+	return userIDStr, nil
+}
 
 // AdaptiveSessionRequest defines parameters for starting a practice session
 type AdaptiveSessionRequest struct {
@@ -29,7 +62,13 @@ type AdaptiveSessionRequest struct {
 // Orchestrates the "Intelligent Adaptive Learning" logic.
 // ──────────────────────────────────────────────
 func StartAdaptiveTraining(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, err := extractUserID(c)
+	if err != nil {
+		log.Printf("[Adaptive] ERROR: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user session"})
+		return
+	}
+	
 	var req AdaptiveSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request parameters"})
@@ -117,7 +156,7 @@ func StartAdaptiveTraining(c *gin.Context) {
 			query.Find(&mistakes)
 		}
 		
-		log.Printf("[RECOVERY] Found %d mistake(s) for user", len(mistakes))
+		log.Printf("[RECOVERY] Found %d mistake(s) for user=%s", len(mistakes), userID)
 
 		// If no mistakes found in recovery/mistakes mode, return early with a clear response
 		// instead of falling through to random vault questions
@@ -127,7 +166,8 @@ func StartAdaptiveTraining(c *gin.Context) {
 				"questions":  []interface{}{},
 				"mode":       req.Mode,
 				"weakTopics": weakTopics,
-				"message":    "No pending wrong questions found. All mastered!",
+				"message":    "No pending wrong questions found. Complete arena tests first to unlock adaptive training!",
+				"empty":      true,
 			})
 			return
 		}
@@ -358,7 +398,12 @@ func StartAdaptiveTraining(c *gin.Context) {
 // Grades a training answer and updates mastery stats.
 // ──────────────────────────────────────────────
 func SubmitAdaptiveAnswer(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, err := extractUserID(c)
+	if err != nil {
+		log.Printf("[Adaptive] ERROR: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user session"})
+		return
+	}
 	
 	type Submission struct {
 		QuestionID    uint   `json:"questionId"`

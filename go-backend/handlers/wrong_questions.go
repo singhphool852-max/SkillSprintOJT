@@ -45,6 +45,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 	var submissions []models.TestSubmission
 	database.DB.Where("attemptId = ?", attempt.ID).Find(&submissions)
 	log.Printf("[ADAPTIVE] Found %d submissions for this attempt", len(submissions))
+	log.Printf("[WrongQ] Processing attempt=%s userID=%s submissions=%d", attempt.ID, attempt.UserID, len(submissions))
 
 	// Build submission lookup by questionID
 	subMap := make(map[string]*models.TestSubmission)
@@ -148,6 +149,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 
 	log.Printf("[ADAPTIVE] ═══════════════════════════════════════")
 	log.Printf("[ADAPTIVE] Extraction complete: %d wrong answers stored for attempt %s", storedCount, attempt.ID)
+	log.Printf("[WrongQ] Saved %d wrong questions for user=%s", storedCount, attempt.UserID)
 
 	// Update topic stats
 	updateUserTopicStats(attempt.UserID, attempt.TestID)

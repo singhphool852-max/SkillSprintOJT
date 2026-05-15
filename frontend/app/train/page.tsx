@@ -135,6 +135,7 @@ export default function TrainPage() {
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiDebugInfo] = useState<{ isRealAI: boolean; provider: string } | null>(null)
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const hasAutoStarted = useRef(false)
 
   const handleAdaptiveStart = useCallback(async (mode: "adaptive" | "mistakes" | "recovery", topicId?: string, attemptId?: string) => {
     setAiLoading(true)
@@ -162,8 +163,8 @@ export default function TrainPage() {
       }
 
       // Handle empty questions / "all mastered" response
-      if (!data.questions || data.questions.length === 0 || !data.sessionId) {
-        setAiError(data.message || "No pending wrong questions found. Complete arena tests first!")
+      if (data.empty === true || !data.questions || data.questions.length === 0 || !data.sessionId) {
+        setAiError(data.message || "Complete arena tests first to unlock adaptive training!")
         return
       }
 
@@ -255,12 +256,13 @@ export default function TrainPage() {
   // Handle incoming mode from dashboard or arena redirect
   useEffect(() => {
     const mode = searchParams?.get('mode')
-    if (mode === 'adaptive' || mode === 'mistakes' || mode === 'recovery') {
+    if ((mode === 'adaptive' || mode === 'mistakes' || mode === 'recovery') && !hasAutoStarted.current) {
+      hasAutoStarted.current = true
       const topicId = searchParams?.get('topicId') || undefined
       const attemptId = searchParams?.get('attemptId') || undefined
       handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : mode as any, topicId, attemptId)
     }
-  }, [searchParams, handleAdaptiveStart])
+  }, [])
 
 
   // Auto-scroll logic and adaptive difficulty calculation
