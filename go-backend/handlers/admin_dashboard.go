@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"time"
 
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
@@ -55,13 +56,19 @@ func GetAdminDashboardStats(c *gin.Context) {
 	database.DB.Model(&models.Test{}).Where("isActive = ?", true).Count(&activeTests)
 
 	// Count users currently active in an arena test
-	// Active = joined within last 4 hours and not yet submitted
+	// Active = started within last 4 hours and not yet submitted
 	var activeArenaUsers int64
-	database.DB.Model(&models.TestAttempt{}).
-		Where("submittedAt IS NULL AND joinedAt > ?", 
-			database.DB.NowFunc().Add(-4*time.Hour)).
+	result := database.DB.Model(&models.TestAttempt{}).
+		Where("submittedAt IS NULL AND startedAt > ?", 
+			time.Now().Add(-4*time.Hour)).
 		Distinct("userId").
 		Count(&activeArenaUsers)
+	
+	if result.Error != nil {
+		log.Printf("[ANALYTICS] activeArenaUsers query error: %v", result.Error)
+		activeArenaUsers = 0
+	}
+	log.Printf("[ANALYTICS] activeArenaUsers count: %d", activeArenaUsers)
 
 	c.JSON(http.StatusOK, gin.H{
 		"totalTests":        totalTests,

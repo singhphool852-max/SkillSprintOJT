@@ -448,6 +448,18 @@ func SubmitAdaptiveAnswer(c *gin.Context) {
 // Admin view of anti-cheat violations across the platform.
 // ──────────────────────────────────────────────
 func GetMistakesAnalytics(c *gin.Context) {
+	// Log total violations for debugging
+	var totalViolations int64
+	database.DB.Model(&models.TestViolation{}).Count(&totalViolations)
+	log.Printf("[ANALYTICS] Total violations in DB: %d", totalViolations)
+
+	// Check what violation types exist
+	var types []struct{ ViolationType string }
+	database.DB.Model(&models.TestViolation{}).
+		Select("DISTINCT violationType").
+		Scan(&types)
+	log.Printf("[ANALYTICS] Violation types in DB: %+v", types)
+
 	type ViolationRow struct {
 		UserName        string `json:"userName"`
 		UserEmail       string `json:"userEmail"`
@@ -459,9 +471,10 @@ func GetMistakesAnalytics(c *gin.Context) {
 	}
 
 	var results []ViolationRow
-	database.DB.Raw(`
+	// Note: table name is "user" not "users" based on User model TableName()
+	err := database.DB.Raw(`
 		SELECT 
-			u.name as user_name,
+			u.username as user_name,
 			u.email as user_email,
 			t.title as test_title,
 			COUNT(v.id) as violation_count,
@@ -469,12 +482,25 @@ func GetMistakesAnalytics(c *gin.Context) {
 			SUM(CASE WHEN v.violationType = 'tab_switch' THEN 1 ELSE 0 END) as tab_switches,
 			MAX(v.timestamp) as last_violation
 		FROM test_violations v
-		JOIN users u ON u.id = v.userId
-		JOIN tests t ON t.id = v.testId
-		GROUP BY v.userId, v.testId, u.name, u.email, t.title
+		LEFT JOIN user u ON u.id = v.userId
+		LEFT JOIN tests t ON t.id = v.testId
+		WHERE v.userId IS NOT NULL AND v.testId IS NOT NULL
+		GROUP BY v.userId, v.testId, u.username, u.email, t.title
 		ORDER BY violation_count DESC
-		LIMIT 50
-	`).Scan(&results)
+		LIMIT 100
+	`).Scan(&results).Error
+
+	if err != nil {
+		log.Printf("[ANALYTICS] Violations query error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":    err.Error(),
+			"mistakes": []ViolationRow{},
+			"total":    0,
+		})
+		return
+	}
+
+	log.Printf("[ANALYTICS] Violations rows returned: %d", len(results))
 
 	c.JSON(http.StatusOK, gin.H{
 		"mistakes": results,
