@@ -141,12 +141,20 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
            });
         }
 
+        let normalizedTestCases = q.testCases;
+        if (typeof q.testCases === 'string') {
+          try { normalizedTestCases = JSON.parse(q.testCases); } catch { normalizedTestCases = []; }
+        }
+
         return {
           id: String(q.id),
           prompt: q.prompt || "No prompt provided",
           type: q.type,
           options: normalizedOptions,
           explanation: q.explanation,
+          starterCode: q.starterCode,
+          constraints: q.constraints,
+          testCases: normalizedTestCases,
           maxScore: 10,
           _answer: q.answer,
           _source: q.source,

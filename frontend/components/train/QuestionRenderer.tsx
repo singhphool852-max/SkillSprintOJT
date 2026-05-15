@@ -12,6 +12,9 @@ interface Question {
   options?: { id: string, text: string }[]
   template?: string
   hint?: string
+  starterCode?: string
+  constraints?: string
+  testCases?: any[]
 }
 
 interface RendererProps {
@@ -25,6 +28,13 @@ interface RendererProps {
 export function QuestionRenderer({ question, answer, onChange, isLocked, result }: RendererProps) {
   // Normalize types
   const type = question.type.toLowerCase()
+
+  // Use starter code if answer is empty and we have it
+  useEffect(() => {
+    if (!answer && question.starterCode && !isLocked) {
+      onChange(question.starterCode)
+    }
+  }, [question.id, question.starterCode, answer, isLocked, onChange])
 
   // 1. MCQ Renderer
   if (type === "mcq") {
@@ -79,6 +89,12 @@ export function QuestionRenderer({ question, answer, onChange, isLocked, result 
   if (type.includes("code") || type.includes("debug") || type.includes("fix")) {
     return (
       <div className="flex flex-col gap-6">
+        {question.constraints && (
+          <div className="p-4 border border-panel-border bg-white/[0.02] flex flex-col gap-2">
+            <span className="font-mono text-[10px] text-neon-cyan uppercase tracking-widest font-bold">Constraints</span>
+            <p className="font-mono text-[11px] text-muted-foreground whitespace-pre-wrap">{question.constraints}</p>
+          </div>
+        )}
         <div className="relative group">
            <div className="absolute -inset-0.5 bg-gradient-to-r from-neon-cyan/10 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
            <textarea

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
+	"github.com/ipsitapp8/SkillSprintOJT/go-backend/judge"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/services"
 	"bytes"
@@ -533,9 +534,6 @@ func NormalizeAnswer(s string) string {
 }
 
 func handleTrainingVerification(c *gin.Context, q models.TrainingQuestion, req VerifyRequest) {
-	var optArr []string
-	json.Unmarshal([]byte(q.Options), &optArr)
-
 	resp := VerifyResponse{
 		Explanation: q.Explanation,
 	}
@@ -545,18 +543,15 @@ func handleTrainingVerification(c *gin.Context, q models.TrainingQuestion, req V
 		userRaw = req.WrittenAnswer
 	}
 
-	log.Printf("[Verify] question_id=%s type=%s", req.QuestionID, q.Type)
-	log.Printf("[Verify] raw user answer=%q", userRaw)
-	log.Printf("[Verify] raw correct answer=%q", q.Answer)
+	log.Printf("[Verify] question_id=%d type=%s", q.ID, q.Type)
 
 	if q.Type == "mcq" {
-		// The frontend sends either the option text directly or a synthetic ID like "OPT_13_2"
-		// We need to compare the actual text content against the stored answer
-		userText := userRaw
+		var optArr []string
+		json.Unmarshal([]byte(q.Options), &optArr)
 
-		// If userRaw looks like a synthetic ID (OPT_*), resolve it to text
+		// Resolve synthetic ID to text if needed
+		userText := userRaw
 		if strings.HasPrefix(userRaw, "OPT_") && len(optArr) > 0 {
-			// Parse index from OPT_{id}_{index}
 			parts := strings.Split(userRaw, "_")
 			if len(parts) >= 3 {
 				idxStr := parts[len(parts)-1]
@@ -570,14 +565,43 @@ func handleTrainingVerification(c *gin.Context, q models.TrainingQuestion, req V
 		normalizedCorrect := NormalizeAnswer(q.Answer)
 		isCorrect := normalizedUser == normalizedCorrect
 
-		log.Printf("[Verify] answer comparison: user=%q correct=%q match=%v", normalizedUser, normalizedCorrect, isCorrect)
-
 		resp.IsCorrect = isCorrect
 		resp.CorrectOption = q.Answer
 		if isCorrect {
 			resp.Feedback = "Correct! Well done."
 		} else {
 			resp.Feedback = "Incorrect. The correct answer is: " + q.Answer
+		}
+	} else if q.Type == "coding" {
+		// Run code against test cases
+		var testCases []models.TestCase
+		if err := json.Unmarshal([]byte(q.TestCases), &testCases); err != nil {
+			log.Printf("[Verify ERROR] Failed to unmarshal test cases: %v", err)
+			resp.IsCorrect = false
+			resp.Feedback = "System Error: Invalid test cases for this challenge."
+		} else if len(testCases) == 0 {
+			resp.IsCorrect = true // Auto-pass if no test cases (shouldn't happen)
+			resp.Feedback = "No test cases found. Passed by default."
+		} else {
+			svc := judge.GetService()
+			passedCount := 0
+			// Use a default language if not specified (backend usually defaults to python)
+			// Ideally the frontend should send the language, but we'll fallback to "python"
+			lang := "python" 
+
+			for _, tc := range testCases {
+				execResult, err := svc.Execute(req.WrittenAnswer, lang, tc.Input, 2000)
+				if err == nil && judge.Normalize(execResult.Output) == judge.Normalize(tc.ExpectedOutput) {
+					passedCount++
+				}
+			}
+
+			resp.IsCorrect = passedCount == len(testCases)
+			if resp.IsCorrect {
+				resp.Feedback = fmt.Sprintf("All %d test cases passed! Mastery confirmed.", len(testCases))
+			} else {
+				resp.Feedback = fmt.Sprintf("Failed: %d/%d test cases passed. Keep debugging!", passedCount, len(testCases))
+			}
 		}
 	} else {
 		// Subjective evaluation
@@ -589,7 +613,6 @@ func handleTrainingVerification(c *gin.Context, q models.TrainingQuestion, req V
 			resp.IsCorrect = aiEval.IsCorrect
 			resp.Feedback = aiEval.Feedback
 		}
-		log.Printf("[Verify] result=%v", resp.IsCorrect)
 	}
 	c.JSON(http.StatusOK, resp)
 }
