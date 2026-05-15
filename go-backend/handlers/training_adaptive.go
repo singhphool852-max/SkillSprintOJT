@@ -313,28 +313,39 @@ func SubmitAdaptiveAnswer(c *gin.Context) {
 
 // ──────────────────────────────────────────────
 // GetMistakesAnalytics → GET /api/admin/analytics/mistakes
-// Admin view of most commonly failed questions across the platform.
+// Admin view of anti-cheat violations across the platform.
 // ──────────────────────────────────────────────
 func GetMistakesAnalytics(c *gin.Context) {
-	type CommonMistake struct {
-		QuestionTitle string  `json:"questionTitle"`
-		TopicID       string  `json:"topicId"`
-		FailureCount  int     `json:"failureCount"`
-		FailureRate   float64 `json:"failureRate"`
+	type ViolationRow struct {
+		UserName        string `json:"userName"`
+		UserEmail       string `json:"userEmail"`
+		TestTitle       string `json:"testTitle"`
+		ViolationCount  int    `json:"violationCount"`
+		FullscreenExits int    `json:"fullscreenExits"`
+		TabSwitches     int    `json:"tabSwitches"`
+		LastViolation   string `json:"lastViolation"`
 	}
 
-	var results []CommonMistake
+	var results []ViolationRow
 	database.DB.Raw(`
 		SELECT 
-			questionTitle, 
-			topicId, 
-			COUNT(*) as failure_count,
-			(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM test_submissions WHERE questionId = user_wrong_questions.questionId)) as failure_rate
-		FROM user_wrong_questions
-		GROUP BY questionTitle, topicId
-		ORDER BY failure_count DESC
-		LIMIT 20
+			u.name as user_name,
+			u.email as user_email,
+			t.title as test_title,
+			COUNT(v.id) as violation_count,
+			SUM(CASE WHEN v.violationType = 'fullscreen_exit' THEN 1 ELSE 0 END) as fullscreen_exits,
+			SUM(CASE WHEN v.violationType = 'tab_switch' THEN 1 ELSE 0 END) as tab_switches,
+			MAX(v.timestamp) as last_violation
+		FROM test_violations v
+		JOIN users u ON u.id = v.userId
+		JOIN tests t ON t.id = v.testId
+		GROUP BY v.userId, v.testId, u.name, u.email, t.title
+		ORDER BY violation_count DESC
+		LIMIT 50
 	`).Scan(&results)
 
-	c.JSON(http.StatusOK, results)
+	c.JSON(http.StatusOK, gin.H{
+		"mistakes": results,
+		"total":    len(results),
+	})
 }
