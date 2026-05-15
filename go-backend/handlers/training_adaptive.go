@@ -133,8 +133,22 @@ func StartAdaptiveTraining(c *gin.Context) {
 		}
 
 		for _, m := range mistakes {
+			// Fetch the original question to get full details
+			var origQuestion models.TestQuestion
+			hasOriginal := database.DB.Preload("MCQOptions").Preload("CodingDetail").Preload("TestCases").
+				Where("id = ?", m.QuestionID).First(&origQuestion).Error == nil
+
+			prompt := m.QuestionTitle
+			if prompt == "" && hasOriginal {
+				prompt = origQuestion.Title
+			}
+			// For coding questions, include the description in the prompt
+			if m.QuestionType == "coding" && hasOriginal && origQuestion.Description != "" {
+				prompt = prompt + "\n\n" + origQuestion.Description
+			}
+
 			tq := &models.TrainingQuestion{
-				Prompt:      m.QuestionTitle,
+				Prompt:      prompt,
 				Topic:       m.TopicID,
 				Difficulty:  m.Difficulty,
 				Type:        m.QuestionType,
@@ -143,15 +157,35 @@ func StartAdaptiveTraining(c *gin.Context) {
 			}
 			
 			if m.QuestionType == "mcq" {
-				var opts []models.TestMCQOption
-				database.DB.Where("questionId = ?", m.QuestionID).Find(&opts)
-				var optTexts []string
-				for _, o := range opts {
-					optTexts = append(optTexts, o.OptionText)
+				if hasOriginal {
+					var optTexts []string
+					for _, o := range origQuestion.MCQOptions {
+						optTexts = append(optTexts, o.OptionText)
+					}
+					optJSON, _ := json.Marshal(optTexts)
+					tq.Options = string(optJSON)
+					// Ensure correct answer is set
+					if tq.Answer == "" {
+						for _, o := range origQuestion.MCQOptions {
+							if o.IsCorrect {
+								tq.Answer = o.OptionText
+								break
+							}
+						}
+					}
+				} else {
+					var opts []models.TestMCQOption
+					database.DB.Where("questionId = ?", m.QuestionID).Find(&opts)
+					var optTexts []string
+					for _, o := range opts {
+						optTexts = append(optTexts, o.OptionText)
+					}
+					optJSON, _ := json.Marshal(optTexts)
+					tq.Options = string(optJSON)
 				}
-				optJSON, _ := json.Marshal(optTexts)
-				tq.Options = string(optJSON)
 			}
+
+			log.Printf("[ADAPTIVE] Building recovery question: type=%s prompt=%.60s answer=%.30s", m.QuestionType, prompt, tq.Answer)
 
 			var existing models.TrainingQuestion
 			if err := database.DB.Where("topic = ? AND prompt = ?", tq.Topic, tq.Prompt).First(&existing).Error; err == nil {
@@ -159,12 +193,16 @@ func StartAdaptiveTraining(c *gin.Context) {
 				log.Printf("[RECOVERY] Mapping mistake to existing vault question ID: %d", tq.ID)
 			} else {
 				if err := database.DB.Create(tq).Error; err != nil {
-					log.Printf("[ERROR] Failed to persist recovery question: %v", err)
+					log.Printf("[ADAPTIVE ERROR] Failed to persist recovery question: %v", err)
+				} else {
+					log.Printf("[ADAPTIVE] Created recovery question ID: %d", tq.ID)
 				}
 			}
 
 			if tq.ID > 0 {
 				sessionQuestions = append(sessionQuestions, *tq)
+			} else {
+				log.Printf("[ADAPTIVE ERROR] Recovery question has no valid ID, skipping")
 			}
 
 			// In "adaptive" mode, we generate similar variations. 
