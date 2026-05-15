@@ -26,33 +26,35 @@ type GlobalLeaderboardEntry struct {
 
 // GetGlobalLeaderboard → GET /api/leaderboard/global
 // Aggregates all submitted test attempts across all tests to produce a global ranking.
-// Ranking logic: total score DESC, then tests completed DESC as tiebreak.
+// Ranking logic: total score DESC, then earliest completedAt as tiebreak (first to submit wins).
 func GetGlobalLeaderboard(c *gin.Context) {
 	type rawRow struct {
-		UserID         string  `json:"userId"`
-		Username       string  `json:"username"`
-		TotalScore     int     `json:"totalScore"`
-		TestsCompleted int     `json:"testsCompleted"`
-		AvgScore       float64 `json:"avgScore"`
-		HighScore      int     `json:"highScore"`
-		TotalMaxScore  int     `json:"totalMaxScore"`
+		UserID          string  `json:"userId"`
+		Username        string  `json:"username"`
+		TotalScore      int     `json:"totalScore"`
+		TestsCompleted  int     `json:"testsCompleted"`
+		AvgScore        float64 `json:"avgScore"`
+		HighScore       int     `json:"highScore"`
+		TotalMaxScore   int     `json:"totalMaxScore"`
+		EarliestSubmit  string  `json:"earliestSubmit"`
 	}
 
 	var rows []rawRow
-	database.DB.Table("test_attempts").
-		Select("test_attempts.userId as user_id, "+
+	database.DB.Table("attempts").
+		Select("attempts.userId as user_id, "+
 			"user.username, "+
-			"SUM(test_attempts.score) as total_score, "+
-			"COUNT(DISTINCT test_attempts.id) as tests_completed, "+
-			"AVG(test_attempts.score) as avg_score, "+
-			"MAX(test_attempts.score) as high_score, "+
-			"SUM(tests.maxScore) as total_max_score").
-		Joins("JOIN user ON user.id = test_attempts.userId").
-		Joins("JOIN tests ON tests.id = test_attempts.testId").
-		Where("test_attempts.submittedAt IS NOT NULL").
-		Where("user.role != 'admin'"). // Exclude admins from leaderboard
-		Group("test_attempts.userId, user.username").
-		Order("total_score DESC, tests_completed DESC").
+			"SUM(attempts.score) as total_score, "+
+			"COUNT(DISTINCT attempts.id) as tests_completed, "+
+			"AVG(attempts.score) as avg_score, "+
+			"MAX(attempts.score) as high_score, "+
+			"SUM(quizzes.maxScore) as total_max_score, "+
+			"MIN(attempts.completedAt) as earliest_submit").
+		Joins("JOIN user ON user.id = attempts.userId").
+		Joins("LEFT JOIN quizzes ON quizzes.id = attempts.quizId").
+		Where("attempts.completedAt IS NOT NULL").
+		Where("user.role != 'admin'").
+		Group("attempts.userId, user.username").
+		Order("total_score DESC, earliest_submit ASC").
 		Limit(100).
 		Scan(&rows)
 
@@ -66,7 +68,7 @@ func GetGlobalLeaderboard(c *gin.Context) {
 			avgPct = float64(r.TotalScore) / float64(r.TotalMaxScore) * 100
 		}
 
-		// Calculate tier based on rank position
+		// Assign same tier to users with same rank (ties share a tier)
 		tier := "ROOKIE"
 		if totalUsers > 0 {
 			percentile := float64(rank) / float64(totalUsers) * 100

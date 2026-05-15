@@ -402,6 +402,13 @@ export function ResultsContent({ id }: { id?: string }) {
                 TRAIN ANOTHER
             </Link>
             <Link
+                href="/leaderboard"
+                className="group flex flex-1 items-center justify-center gap-3 border border-neon-amber/50 bg-neon-amber/10 py-4 font-mono text-xs font-black tracking-widest text-neon-amber transition-all hover:bg-neon-amber/20"
+            >
+                <Trophy className="h-4 w-4" />
+                LEADERBOARD
+            </Link>
+            <Link
                 href="/dashboard"
                 className="group flex items-center justify-center gap-4 border border-panel-border bg-panel-bg/40 px-8 py-4 font-mono text-xs font-bold tracking-widest text-muted-foreground hover:text-foreground transition-all"
             >
