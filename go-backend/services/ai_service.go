@@ -343,28 +343,41 @@ func GenerateQuestions(topic, difficulty string, count int, excludePrompts []str
 		excludeText = fmt.Sprintf("\nIMPORTANT: DO NOT generate questions similar to these existing prompts: %s", strings.Join(excludePrompts, " | "))
 	}
 
-	// 3. Build the strict prompt (unchanged)
-	prompt := fmt.Sprintf(`Generate EXACTLY %d MCQ questions for topic: %s, difficulty: %s.
+	// 3. Build the prompt — mix of subjective (theory) and MCQ questions
+	prompt := fmt.Sprintf(`Generate EXACTLY %d training questions for topic: %s, difficulty: %s.
 %s
 
-Return ONLY JSON array:
-[
-  {
-    "type": "mcq",
-    "prompt": "Question text here (clear and technical)",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "answer": "Exact text of the correct option (must match one of the options)",
-    "explanation": "Brief technical explanation",
-    "difficulty": "%s"
-  }
-]
+Generate a MIX of question types:
+- About 60%% should be SUBJECTIVE (theory/open-ended, type: "subjective")
+- About 40%% should be MCQ (multiple choice, type: "mcq")
+
+Return ONLY a JSON array. No markdown. No text outside JSON.
+
+Each SUBJECTIVE question must follow this structure:
+{
+  "type": "subjective",
+  "prompt": "Clear theory/conceptual question requiring a written explanation",
+  "options": [],
+  "answer": "A detailed model answer that the AI will use to evaluate the user's response",
+  "explanation": "Brief technical explanation of the concept",
+  "difficulty": "%s"
+}
+
+Each MCQ question must follow this structure:
+{
+  "type": "mcq",
+  "prompt": "Question text here (clear and technical)",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "answer": "Exact text of the correct option (must match one of the options exactly)",
+  "explanation": "Brief technical explanation",
+  "difficulty": "%s"
+}
 
 Rules:
 - Generate diverse questions covering different subtopics.
 - Do not repeat the same concept phrased differently.
-- No markdown formatting.
-- No text outside JSON.
-- No `+"`"+`json code fences.%s`, count, topic, difficulty, varietyGuidance, difficulty, excludeText)
+- Subjective questions should test deep understanding, not just definitions.
+- No markdown formatting. No text outside JSON. No `+"`"+`json code fences.%s`, count, topic, difficulty, varietyGuidance, difficulty, difficulty, excludeText)
 
 	// 4. Build the OpenAI request payload
 	payload := map[string]interface{}{
@@ -447,9 +460,19 @@ Rules:
 	// 9. Safely Filter & Validate
 	var questions []GeneratedQuestion
 	for _, q := range rawQuestions {
-		if q.Prompt == "" || len(q.Options) < 2 || q.Answer == "" {
-			log.Printf("[AI SKIP] Dropping malformed question: prompt_len=%d options=%d", len(q.Prompt), len(q.Options))
+		if q.Prompt == "" || q.Answer == "" {
+			log.Printf("[AI SKIP] Dropping malformed question: prompt_len=%d", len(q.Prompt))
 			continue
+		}
+		// MCQ must have at least 2 options; subjective questions have none
+		qType := strings.ToLower(q.Type)
+		if qType == "mcq" && len(q.Options) < 2 {
+			log.Printf("[AI SKIP] Dropping MCQ with insufficient options: prompt_len=%d options=%d", len(q.Prompt), len(q.Options))
+			continue
+		}
+		// Default type to subjective if missing or unrecognized
+		if qType != "mcq" && qType != "coding" {
+			q.Type = "subjective"
 		}
 		questions = append(questions, q)
 	}

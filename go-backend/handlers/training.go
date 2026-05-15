@@ -438,10 +438,14 @@ func sanitizeNotesQuestions(questions []services.GeneratedQuestion) []services.G
 	valid := make([]services.GeneratedQuestion, 0, len(questions))
 	for _, q := range questions {
 		if strings.TrimSpace(q.Prompt) == "" ||
-			len(q.Options) < 4 ||
 			strings.TrimSpace(q.Answer) == "" ||
 			strings.TrimSpace(q.Explanation) == "" ||
 			strings.TrimSpace(q.Difficulty) == "" {
+			continue
+		}
+		// MCQ must have 4 options; subjective questions have none — both are valid
+		qType := strings.ToLower(q.Type)
+		if qType == "mcq" && len(q.Options) < 4 {
 			continue
 		}
 		valid = append(valid, q)
