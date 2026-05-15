@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
-	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"log"
 	"net/http"
 
@@ -30,70 +29,59 @@ type GlobalLeaderboardEntry struct {
 // Aggregates all submitted test attempts across all tests to produce a global ranking.
 // Ranking logic: total score DESC, then earliest completedAt as tiebreak (first to submit wins).
 func GetGlobalLeaderboard(c *gin.Context) {
-	type rawRow struct {
-		UserID         string  `db:"user_id"`
-		Username       string  `db:"username"`
-		TotalScore     int     `db:"total_score"`
-		TestsCompleted int     `db:"tests_completed"`
-		BestScore      int     `db:"best_score"`
-		EarliestSubmit string  `db:"earliest_submit"`
+	type LeaderboardRow struct {
+		UserID         string `gorm:"column:user_id"`
+		Username       string `gorm:"column:username"`
+		TestsCount     int    `gorm:"column:tests_count"`
+		BestScore      int    `gorm:"column:best_score"`
+		TotalScore     int    `gorm:"column:total_score"`
+		EarliestSubmit string `gorm:"column:earliest_submit"`
 	}
 
-	// Get the actual table name from the model
-	var attempt models.Attempt
-	tableName := database.DB.NamingStrategy.TableName(attempt.TableName())
-	if tableName == "" {
-		tableName = "attempts" // fallback
-	}
+	var entries []LeaderboardRow
 
-	var user models.User
-	userTableName := database.DB.NamingStrategy.TableName(user.TableName())
-	if userTableName == "" {
-		userTableName = "user" // fallback
-	}
+	// Use GORM query builder with correct MySQL column names (camelCase)
+	query := database.DB.Table("attempts").
+		Select("attempts.userId as user_id, "+
+			"user.username as username, "+
+			"COUNT(DISTINCT attempts.id) as tests_count, "+
+			"MAX(attempts.score) as best_score, "+
+			"SUM(attempts.score) as total_score, "+
+			"MIN(attempts.completedAt) as earliest_submit").
+		Joins("JOIN user ON user.id = attempts.userId").
+		Where("attempts.completedAt IS NOT NULL").
+		Where("user.role != ?", "admin").
+		Group("attempts.userId, user.username").
+		Order("total_score DESC, earliest_submit ASC").
+		Limit(100)
 
-	// Build raw SQL query
-	sqlQuery := `
-		SELECT 
-			a.userId as user_id,
-			u.username,
-			SUM(a.score) as total_score,
-			COUNT(DISTINCT a.id) as tests_completed,
-			MAX(a.score) as best_score,
-			MIN(a.completedAt) as earliest_submit
-		FROM ` + tableName + ` a
-		JOIN ` + userTableName + ` u ON u.id = a.userId
-		WHERE a.completedAt IS NOT NULL
-		AND u.role != 'admin'
-		GROUP BY a.userId, u.username
-		ORDER BY total_score DESC, earliest_submit ASC
-		LIMIT 100
-	`
+	log.Printf("[Leaderboard] Executing query...")
 
-	log.Printf("[Leaderboard] Using table: %s, user table: %s", tableName, userTableName)
-	log.Printf("[Leaderboard] SQL Query:\n%s", sqlQuery)
-
-	var rows []rawRow
-	if err := database.DB.Raw(sqlQuery).Scan(&rows).Error; err != nil {
-		log.Printf("[Leaderboard] Query error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch leaderboard", "details": err.Error()})
+	if err := query.Scan(&entries).Error; err != nil {
+		log.Printf("[Leaderboard] DB ERROR: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Database query failed",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	log.Printf("[Leaderboard] Found %d users", len(rows))
+	log.Printf("[Leaderboard] Found %d entries", len(entries))
 
-	entries := make([]GlobalLeaderboardEntry, len(rows))
-	totalUsers := len(rows)
+	// Transform to response format
+	results := make([]GlobalLeaderboardEntry, len(entries))
+	totalUsers := len(entries)
 
-	for i, r := range rows {
+	for i, entry := range entries {
 		rank := i + 1
-		// Calculate average percentage based on total questions
+
+		// Calculate average percentage
 		avgPct := float64(0)
-		if r.TestsCompleted > 0 && r.TotalScore > 0 {
-			avgPct = (float64(r.TotalScore) / float64(r.TestsCompleted))
+		if entry.TestsCount > 0 && entry.TotalScore > 0 {
+			avgPct = float64(entry.TotalScore) / float64(entry.TestsCount)
 		}
 
-		// Assign same tier to users with same rank (ties share a tier)
+		// Assign tier based on percentile
 		tier := "ROOKIE"
 		if totalUsers > 0 {
 			percentile := float64(rank) / float64(totalUsers) * 100
@@ -113,23 +101,23 @@ func GetGlobalLeaderboard(c *gin.Context) {
 			}
 		}
 
-		entries[i] = GlobalLeaderboardEntry{
+		results[i] = GlobalLeaderboardEntry{
 			Rank:           rank,
-			UserID:         r.UserID,
-			Username:       r.Username,
-			TotalScore:     r.TotalScore,
-			TestsCompleted: r.TestsCompleted,
+			UserID:         entry.UserID,
+			Username:       entry.Username,
+			TotalScore:     entry.TotalScore,
+			TestsCompleted: entry.TestsCount,
 			AvgPercentage:  float64(int(avgPct*100)) / 100,
-			HighScore:      r.BestScore,
+			HighScore:      entry.BestScore,
 			Tier:           tier,
 		}
 
-		log.Printf("[Leaderboard] Entry %d: User=%s (ID=%s) Score=%d Tests=%d Best=%d",
-			rank, r.Username, r.UserID, r.TotalScore, r.TestsCompleted, r.BestScore)
+		log.Printf("[Leaderboard] #%d: %s (ID=%s) Score=%d Tests=%d Best=%d",
+			rank, entry.Username, entry.UserID, entry.TotalScore, entry.TestsCount, entry.BestScore)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"entries":    entries,
+		"entries":    results,
 		"totalUsers": totalUsers,
 	})
 }
@@ -137,54 +125,48 @@ func GetGlobalLeaderboard(c *gin.Context) {
 // GetLeaderboardDebug → GET /api/leaderboard/debug
 // Debug endpoint to check if attempts exist in the database
 func GetLeaderboardDebug(c *gin.Context) {
-	var attempt models.Attempt
-	tableName := database.DB.NamingStrategy.TableName(attempt.TableName())
-	if tableName == "" {
-		tableName = "attempts"
-	}
-
 	// Count total attempts
 	var totalCount int64
-	database.DB.Table(tableName).Count(&totalCount)
+	database.DB.Table("attempts").Count(&totalCount)
 
 	// Count completed attempts
 	var completedCount int64
-	database.DB.Table(tableName).Where("completedAt IS NOT NULL").Count(&completedCount)
+	database.DB.Table("attempts").Where("completedAt IS NOT NULL").Count(&completedCount)
 
 	// Count users
-	var user models.User
-	userTableName := database.DB.NamingStrategy.TableName(user.TableName())
-	if userTableName == "" {
-		userTableName = "user"
-	}
 	var userCount int64
-	database.DB.Table(userTableName).Count(&userCount)
+	database.DB.Table("user").Count(&userCount)
+
+	// Count non-admin users
+	var nonAdminCount int64
+	database.DB.Table("user").Where("role != ?", "admin").Count(&nonAdminCount)
 
 	// Get sample attempts
-	type sampleAttempt struct {
-		ID          string `db:"id"`
-		UserID      string `db:"userId"`
-		Score       int    `db:"score"`
-		CompletedAt string `db:"completedAt"`
+	type SampleAttempt struct {
+		ID          string `gorm:"column:id"`
+		UserID      string `gorm:"column:userId"`
+		Score       int    `gorm:"column:score"`
+		CompletedAt string `gorm:"column:completedAt"`
 	}
-	var samples []sampleAttempt
-	database.DB.Table(tableName).
+	var samples []SampleAttempt
+	database.DB.Table("attempts").
 		Select("id, userId, score, completedAt").
 		Where("completedAt IS NOT NULL").
 		Order("completedAt DESC").
 		Limit(5).
 		Scan(&samples)
 
-	log.Printf("[LeaderboardDebug] Table=%s Total=%d Completed=%d Users=%d Samples=%d",
-		tableName, totalCount, completedCount, userCount, len(samples))
+	log.Printf("[LeaderboardDebug] Total=%d Completed=%d Users=%d NonAdmin=%d Samples=%d",
+		totalCount, completedCount, userCount, nonAdminCount, len(samples))
 
 	c.JSON(http.StatusOK, gin.H{
-		"tableName":       tableName,
-		"userTableName":   userTableName,
-		"totalAttempts":   totalCount,
+		"tableName":         "attempts",
+		"userTableName":     "user",
+		"totalAttempts":     totalCount,
 		"completedAttempts": completedCount,
-		"totalUsers":      userCount,
-		"sampleAttempts":  samples,
-		"message":         "Debug info retrieved successfully",
+		"totalUsers":        userCount,
+		"nonAdminUsers":     nonAdminCount,
+		"sampleAttempts":    samples,
+		"message":           "Debug info retrieved successfully",
 	})
 }
