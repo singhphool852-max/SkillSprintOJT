@@ -25,30 +25,35 @@ func UpdateUserTopicStatsManual(userID string, testID string) {
 // Creates UserWrongQuestion rows for every wrong/skipped answer.
 // ──────────────────────────────────────────────
 func extractWrongQuestions(attempt models.TestAttempt) {
+	log.Printf("[ADAPTIVE] ═══════════════════════════════════════")
+	log.Printf("[ADAPTIVE] Starting wrong question extraction for attempt=%s user=%s test=%s", attempt.ID, attempt.UserID, attempt.TestID)
+
 	// Load the test to get topicId
 	var test models.Test
 	if err := database.DB.Where("id = ?", attempt.TestID).First(&test).Error; err != nil {
-		log.Printf("[WRONG-Q] failed to load test %s: %v", attempt.TestID, err)
+		log.Printf("[ADAPTIVE ERROR] Failed to load test %s: %v", attempt.TestID, err)
 		return
 	}
+	log.Printf("[ADAPTIVE] Test loaded: title=%s topicId=%s difficulty=%s", test.Title, test.TopicID, test.Difficulty)
 
 	// Load all questions for this test
 	var questions []models.TestQuestion
 	database.DB.Where("testId = ?", attempt.TestID).Find(&questions)
+	log.Printf("[ADAPTIVE] Found %d questions in test", len(questions))
 
 	// Load all submissions for this attempt
 	var submissions []models.TestSubmission
 	database.DB.Where("attemptId = ?", attempt.ID).Find(&submissions)
+	log.Printf("[ADAPTIVE] Found %d submissions for this attempt", len(submissions))
 
 	// Build submission lookup by questionID
 	subMap := make(map[string]*models.TestSubmission)
 	for i := range submissions {
 		subMap[submissions[i].QuestionID] = &submissions[i]
+		log.Printf("[ADAPTIVE]   submission: qID=%s verdict=%s score=%.1f", submissions[i].QuestionID, submissions[i].Verdict, submissions[i].Score)
 	}
 
 	// Idempotency: Check if THIS attempt has already been processed.
-	// We track by attemptId to allow re-processing if the same question
-	// was wrong in a DIFFERENT attempt (the UPSERT on userId+questionId handles that).
 	var existingCount int64
 	database.DB.Model(&models.UserWrongQuestion{}).Where("attemptId = ?", attempt.ID).Count(&existingCount)
 	// Count how many questions in this test are NOT accepted
@@ -60,11 +65,12 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 		}
 	}
 	if existingCount > 0 && int(existingCount) >= expectedWrongCount {
-		log.Printf("[WRONG-Q] attempt %s already fully processed (%d entries), skipping", attempt.ID, existingCount)
+		log.Printf("[ADAPTIVE] Attempt %s already fully processed (%d entries >= %d expected), skipping", attempt.ID, existingCount, expectedWrongCount)
 		return
 	}
-	log.Printf("[WRONG-Q] Processing attempt %s: %d existing, %d expected wrong", attempt.ID, existingCount, expectedWrongCount)
+	log.Printf("[ADAPTIVE] Processing: %d existing entries, %d expected wrong answers", existingCount, expectedWrongCount)
 
+	storedCount := 0
 	for _, q := range questions {
 		sub, submitted := subMap[q.ID]
 		verdict := "skipped"
@@ -88,6 +94,8 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 			}
 		}
 
+		log.Printf("[ADAPTIVE] Question %s (%s): verdict=%s submitted=%v", q.ID, q.Title, verdict, submitted)
+
 		// LOGIC: If wrong or skipped, UPSERT into user_wrong_questions
 		if verdict != "accepted" && verdict != "draft" {
 			var existing models.UserWrongQuestion
@@ -95,21 +103,27 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 			
 			if err == nil {
 				// Update existing: increment wrong count and refresh snapshot
-				database.DB.Model(&existing).Updates(map[string]interface{}{
+				result := database.DB.Model(&existing).Updates(map[string]interface{}{
 					"attemptId":      attempt.ID,
 					"testId":         attempt.TestID,
 					"userAnswer":     userAnswer,
 					"correctAnswer":  correctAnswer,
 					"verdict":        verdict,
 					"wrongCount":     existing.WrongCount + 1,
-					"correctStreak":  0, // Reset streak on fresh failure
-					"masteredAt":     nil, // Un-master if they fail it again
+					"correctStreak":  0,
+					"masteredAt":     nil,
 					"pointsLost":     float64(q.Points) - subScore(sub),
 					"pointsPossible": q.Points,
 				})
+				if result.Error != nil {
+					log.Printf("[ADAPTIVE ERROR] Failed to update wrong question for q=%s: %v", q.ID, result.Error)
+				} else {
+					log.Printf("[ADAPTIVE] ✓ Updated wrong question: q=%s wrongCount=%d", q.ID, existing.WrongCount+1)
+					storedCount++
+				}
 			} else {
 				// Create new
-				database.DB.Create(&models.UserWrongQuestion{
+				wq := &models.UserWrongQuestion{
 					ID:             uuid.New().String(),
 					UserID:         attempt.UserID,
 					AttemptID:      attempt.ID,
@@ -117,6 +131,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 					TestID:         attempt.TestID,
 					TopicID:        test.TopicID,
 					QuestionType:   q.Type,
+					Difficulty:     test.Difficulty,
 					QuestionTitle:  q.Title,
 					UserAnswer:     userAnswer,
 					CorrectAnswer:  correctAnswer,
@@ -124,10 +139,22 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 					WrongCount:     1,
 					PointsLost:     float64(q.Points) - subScore(sub),
 					PointsPossible: q.Points,
-				})
+				}
+				result := database.DB.Create(wq)
+				if result.Error != nil {
+					log.Printf("[ADAPTIVE ERROR] Failed to CREATE wrong question for q=%s: %v", q.ID, result.Error)
+				} else {
+					log.Printf("[ADAPTIVE] ✓ Created wrong question: id=%s q=%s topic=%s verdict=%s", wq.ID, q.ID, test.TopicID, verdict)
+					storedCount++
+				}
 			}
+		} else {
+			log.Printf("[ADAPTIVE] ○ Skipping q=%s (verdict=%s — correct or draft)", q.ID, verdict)
 		}
 	}
+
+	log.Printf("[ADAPTIVE] ═══════════════════════════════════════")
+	log.Printf("[ADAPTIVE] Extraction complete: %d wrong answers stored for attempt %s", storedCount, attempt.ID)
 
 	// Update topic stats
 	updateUserTopicStats(attempt.UserID, attempt.TestID)
