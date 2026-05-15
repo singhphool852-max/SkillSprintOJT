@@ -53,9 +53,6 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 		log.Printf("[ADAPTIVE]   submission: qID=%s verdict=%s score=%.1f", submissions[i].QuestionID, submissions[i].Verdict, submissions[i].Score)
 	}
 
-	// Idempotency: Check if THIS attempt has already been processed.
-	var existingCount int64
-	database.DB.Model(&models.UserWrongQuestion{}).Where("attemptId = ?", attempt.ID).Count(&existingCount)
 	// Count how many questions in this test are NOT accepted
 	var expectedWrongCount int
 	for _, q := range questions {
@@ -64,11 +61,7 @@ func extractWrongQuestions(attempt models.TestAttempt) {
 			expectedWrongCount++
 		}
 	}
-	if existingCount > 0 && int(existingCount) >= expectedWrongCount {
-		log.Printf("[ADAPTIVE] Attempt %s already fully processed (%d entries >= %d expected), skipping", attempt.ID, existingCount, expectedWrongCount)
-		return
-	}
-	log.Printf("[ADAPTIVE] Processing: %d existing entries, %d expected wrong answers", existingCount, expectedWrongCount)
+	log.Printf("[ADAPTIVE] Processing attempt: expected %d wrong answers", expectedWrongCount)
 
 	storedCount := 0
 	for _, q := range questions {
