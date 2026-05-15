@@ -28,6 +28,9 @@ interface Question {
   hint?: string
   maxScore: number
   _source?: string
+  starterCode?: string
+  constraints?: string
+  testCases?: any[]
 }
 
 interface TrainingSolverProps {

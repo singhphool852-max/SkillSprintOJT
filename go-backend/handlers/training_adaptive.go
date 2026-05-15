@@ -185,6 +185,17 @@ func StartAdaptiveTraining(c *gin.Context) {
 				}
 			}
 
+			if m.QuestionType == "coding" && hasOriginal {
+				if origQuestion.CodingDetail != nil {
+					tq.StarterCode = origQuestion.CodingDetail.StarterCode
+					tq.Constraints = origQuestion.CodingDetail.Constraints
+				}
+				if len(origQuestion.TestCases) > 0 {
+					tcJSON, _ := json.Marshal(origQuestion.TestCases)
+					tq.TestCases = string(tcJSON)
+				}
+			}
+
 			log.Printf("[ADAPTIVE] Building recovery question: type=%s prompt=%.60s answer=%.30s", m.QuestionType, prompt, tq.Answer)
 
 			var existing models.TrainingQuestion

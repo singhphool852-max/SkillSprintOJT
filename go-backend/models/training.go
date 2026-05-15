@@ -7,13 +7,19 @@ import "time"
 type TrainingQuestion struct {
 	ID          uint      `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
 	Topic       string    `gorm:"type:varchar(191);index;column:topic" json:"topic"`
-	Type        string    `gorm:"column:type" json:"type"`               // mcq | debug | code_output | short_answer | logic
+	Type        string    `gorm:"column:type" json:"type"`               // mcq | coding | debug | short_answer
 	Difficulty  string    `gorm:"column:difficulty" json:"difficulty"`    // easy | medium | hard
 	Prompt      string    `gorm:"column:prompt;type:text" json:"prompt"`
-	Options     string    `gorm:"column:options;type:text" json:"options"`         // JSON array string e.g. ["A","B","C","D"]
+	Options     string    `gorm:"column:options;type:text" json:"options"`         // JSON array for MCQ
 	Answer      string    `gorm:"column:answer;type:text" json:"answer"`
 	Explanation string    `gorm:"column:explanation;type:text" json:"explanation"`
-	Source      string    `gorm:"column:source" json:"source"` // seeded | ai | notes
+	
+	// Coding Specific Fields
+	StarterCode string    `gorm:"column:starter_code;type:text" json:"starterCode"`
+	Constraints string    `gorm:"column:constraints;type:text" json:"constraints"`
+	TestCases   string    `gorm:"column:test_cases;type:text" json:"testCases"` // JSON array of test cases
+	
+	Source      string    `gorm:"column:source" json:"source"` // seeded | ai | notes | recovery
 	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 }
 
