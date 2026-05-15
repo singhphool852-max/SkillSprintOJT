@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"time"
+
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/database"
 	"github.com/ipsitapp8/SkillSprintOJT/go-backend/models"
 	"net/http"
@@ -52,18 +54,28 @@ func GetAdminDashboardStats(c *gin.Context) {
 	var activeTests int64
 	database.DB.Model(&models.Test{}).Where("isActive = ?", true).Count(&activeTests)
 
+	// Count users currently active in an arena test
+	// Active = joined within last 4 hours and not yet submitted
+	var activeArenaUsers int64
+	database.DB.Model(&models.TestAttempt{}).
+		Where("submittedAt IS NULL AND joinedAt > ?", 
+			database.DB.NowFunc().Add(-4*time.Hour)).
+		Distinct("userId").
+		Count(&activeArenaUsers)
+
 	c.JSON(http.StatusOK, gin.H{
-		"totalTests":       totalTests,
-		"publishedTests":   publishedTests,
-		"activeTests":      activeTests,
-		"totalUsers":       totalUsers,
-		"adminUsers":       adminUsers,
-		"regularUsers":     totalUsers - adminUsers,
-		"totalTopics":      totalTopics,
-		"totalAttempts":    totalAttempts,
+		"totalTests":        totalTests,
+		"publishedTests":    publishedTests,
+		"activeTests":       activeTests,
+		"totalUsers":        totalUsers,
+		"activeArenaUsers":  activeArenaUsers,
+		"adminUsers":        adminUsers,
+		"regularUsers":      totalUsers - adminUsers,
+		"totalTopics":       totalTopics,
+		"totalAttempts":     totalAttempts,
 		"submittedAttempts": submittedAttempts,
-		"avgScore":         avgScore.Avg,
-		"totalQuestions":   totalQuestions,
+		"avgScore":          avgScore.Avg,
+		"totalQuestions":    totalQuestions,
 	})
 }
 
