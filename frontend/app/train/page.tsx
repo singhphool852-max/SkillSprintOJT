@@ -138,10 +138,13 @@ export default function TrainPage() {
 
   const handleAdaptiveStart = useCallback(async (mode: "adaptive" | "mistakes" | "recovery", topicId?: string, attemptId?: string) => {
     setAiLoading(true)
+    setAiError(null)
     try {
       const payload: any = { mode }
       if (topicId) payload.topicId = topicId
       if (attemptId) payload.attemptId = attemptId
+
+      console.log("[ADAPTIVE] Starting session:", payload)
 
       const res = await fetch(`${API_URL}/api/training/adaptive/start`, {
         method: "POST",
@@ -149,16 +152,29 @@ export default function TrainPage() {
         body: JSON.stringify(payload),
         credentials: "include"
       })
-      if (res.ok) {
-        const data = await res.json()
-        router.push(`/train/play/${data.sessionId}?mode=${mode.toUpperCase()}`)
+
+      const data = await res.json()
+      console.log("[ADAPTIVE] Response:", data)
+
+      if (!res.ok) {
+        setAiError(data.error || `Failed to start session (${res.status})`)
+        return
       }
-    } catch (err) {
-      console.error("Failed to start adaptive session:", err)
+
+      // Handle empty questions / "all mastered" response
+      if (!data.questions || data.questions.length === 0 || !data.sessionId) {
+        setAiError(data.message || "No pending wrong questions found. Complete arena tests first!")
+        return
+      }
+
+      router.push(`/train/play/${data.sessionId}?mode=${mode.toUpperCase()}`)
+    } catch (err: any) {
+      console.error("[ADAPTIVE] Failed to start session:", err)
+      setAiError(err?.message || "Failed to connect to training server")
     } finally {
       setAiLoading(false)
     }
-  }, [router, setAiLoading])
+  }, [router, setAiLoading, setAiError])
 
   const handleGenerateAI = useCallback(async () => {
     if (!aiTopic.trim()) {
@@ -396,6 +412,18 @@ export default function TrainPage() {
                 />
               ))}
             </div>
+            {/* Adaptive/Recovery feedback */}
+            {aiLoading && (
+              <div className="mt-4 flex items-center gap-3 p-4 border border-neon-cyan/20 bg-neon-cyan/5">
+                <Activity className="h-4 w-4 text-neon-cyan animate-spin" />
+                <span className="font-mono text-[10px] text-neon-cyan tracking-widest uppercase">INITIALIZING NEURAL SESSION...</span>
+              </div>
+            )}
+            {aiError && !aiLoading && (
+              <div className="mt-4 p-4 border border-neon-pink/30 bg-neon-pink/10">
+                <span className="font-mono text-[10px] text-neon-pink tracking-widest uppercase">{aiError}</span>
+              </div>
+            )}
           </div>
 
           {/* Section: AI Custom Generation */}
