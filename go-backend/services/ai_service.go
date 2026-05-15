@@ -307,13 +307,17 @@ type GeneratedQuestion struct {
 	Difficulty    string   `json:"difficulty,omitempty"`
 }
 
-// GenerateQuestions calls the Gemini 1.5 Flash API to produce MCQ questions.
+// GenerateQuestions calls the OpenAI chat completions API to produce MCQ questions.
 func GenerateQuestions(topic, difficulty string, count int, excludePrompts []string) ([]GeneratedQuestion, error) {
-	// 1. Read API key from environment
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	// 1. Read API key and model from environment
+	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		log.Println("[AI] CRITICAL: GEMINI_API_KEY is not set in environment")
-		return nil, fmt.Errorf("GEMINI_API_KEY not found in environment")
+		log.Println("[AI] CRITICAL: OPENAI_API_KEY is not set in environment")
+		return nil, fmt.Errorf("OPENAI_API_KEY not found in environment")
+	}
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "gpt-4.1-mini"
 	}
 
 	log.Printf("[AI] Start: topic=%s difficulty=%s count=%d", topic, difficulty, count)
@@ -339,7 +343,7 @@ func GenerateQuestions(topic, difficulty string, count int, excludePrompts []str
 		excludeText = fmt.Sprintf("\nIMPORTANT: DO NOT generate questions similar to these existing prompts: %s", strings.Join(excludePrompts, " | "))
 	}
 
-	// 3. Build the strict prompt
+	// 3. Build the strict prompt (unchanged)
 	prompt := fmt.Sprintf(`Generate EXACTLY %d MCQ questions for topic: %s, difficulty: %s.
 %s
 
@@ -362,101 +366,85 @@ Rules:
 - No text outside JSON.
 - No `+"`"+`json code fences.%s`, count, topic, difficulty, varietyGuidance, difficulty, excludeText)
 
-	// 3. Build the Gemini API request payload
-	type Part struct {
-		Text string `json:"text"`
-	}
-	type Content struct {
-		Parts []Part `json:"parts"`
-	}
-	type RequestBody struct {
-		Contents []Content `json:"contents"`
-	}
-
-	reqBody := RequestBody{
-		Contents: []Content{
-			{Parts: []Part{{Text: prompt}}},
+	// 4. Build the OpenAI request payload
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
 		},
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// 4. POST to gemini-2.5-flash with 30s timeout
-	// Verifying availability: gemini-2.5-flash is the stable multimodal model in this environment.
-	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s",
-		apiKey,
-	)
+	// 5. POST to OpenAI /v1/chat/completions with 30s timeout
+	log.Printf("[AI] Calling OpenAI: model=%s target_count=%d", model, count)
 
-	// Diagnostic masking: log first 4 and last 4 of key
-	maskedKey := "EMPTY"
-	if len(apiKey) > 8 {
-		maskedKey = apiKey[:4] + "...." + apiKey[len(apiKey)-4:]
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	log.Printf("[AI] Calling Gemini v1beta: model=gemini-2.5-flash target_count=%d key=%s", count, maskedKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[AI] ERROR: Network request failed: %v", err)
-		return nil, fmt.Errorf("gemini network error: %w", err)
+		return nil, fmt.Errorf("openai network error: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return nil, fmt.Errorf("failed to read gemini response: %w", readErr)
+		return nil, fmt.Errorf("failed to read openai response: %w", readErr)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if isGeminiRateLimited(resp.StatusCode, respBody) {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			log.Printf("[GEMINI_RATE_LIMIT] 429 on GenerateQuestions topic=%s", topic)
 			return nil, ErrGeminiRateLimit
 		}
-		log.Printf("[AI] ERROR: Gemini API returned status %d. URL used: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", resp.StatusCode)
-		return nil, fmt.Errorf("gemini API error: status %d", resp.StatusCode)
+		log.Printf("[AI] ERROR: OpenAI API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("openai API error: status %d", resp.StatusCode)
 	}
 
-	// 5. Decode the Gemini response envelope
-	type GeminiResponse struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
+	// 6. Decode the OpenAI response envelope
+	var openAIResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 
-	var geminiResp GeminiResponse
-	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
+	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
 		log.Printf("[AI] ERROR: Failed to decode response body: %v", err)
-		return nil, fmt.Errorf("gemini decode error: %w", err)
+		return nil, fmt.Errorf("openai decode error: %w", err)
 	}
 
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		log.Println("[AI] ERROR: Empty candidates in Gemini response")
-		return nil, fmt.Errorf("gemini returned empty response")
+	if len(openAIResp.Choices) == 0 {
+		log.Println("[AI] ERROR: Empty choices in OpenAI response")
+		return nil, fmt.Errorf("openai returned empty response")
 	}
 
-	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
+	rawText := openAIResp.Choices[0].Message.Content
 	log.Printf("[AI] Raw response received. Length: %d bytes", len(rawText))
 
-	// 6. Clean and extract JSON from the raw text
+	// 7. Clean and extract JSON from the raw text
 	cleaned := cleanGeminiResponse(rawText)
 	log.Printf("[AI] Cleaned JSON length: %d bytes", len(cleaned))
 
-	// 7. Parse into []GeneratedQuestion
+	// 8. Parse into []GeneratedQuestion
 	var rawQuestions []GeneratedQuestion
 	if err := json.Unmarshal([]byte(cleaned), &rawQuestions); err != nil {
 		log.Printf("[AI ERROR] Failed to unmarshal JSON: %v | Raw start: %.100s", err, cleaned)
 		return nil, fmt.Errorf("AI generation failed: could not parse response")
 	}
 
-	// 8. Safely Filter & Validate
+	// 9. Safely Filter & Validate
 	var questions []GeneratedQuestion
 	for _, q := range rawQuestions {
 		if q.Prompt == "" || len(q.Options) < 2 || q.Answer == "" {
@@ -472,9 +460,13 @@ Rules:
 
 // SummarizeNotes generates a concise technical summary of the provided text.
 func SummarizeNotes(text string) (string, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		return "", fmt.Errorf("GEMINI_API_KEY not found")
+		return "", fmt.Errorf("OPENAI_API_KEY not found")
+	}
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "gpt-4.1-mini"
 	}
 
 	inputLen := len(text)
@@ -486,22 +478,24 @@ func SummarizeNotes(text string) (string, error) {
 
 	prompt := fmt.Sprintf("Summarize the following notes into concise bullet points covering only the key concepts.\n\nNOTES:\n%s", text)
 
-	type Part struct {
-		Text string `json:"text"`
-	}
-	type Content struct {
-		Parts []Part `json:"parts"`
-	}
-	type RequestBody struct {
-		Contents []Content `json:"contents"`
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
 	}
 
-	reqBody := RequestBody{Contents: []Content{{Parts: []Part{{Text: prompt}}}}}
-	jsonData, _ := json.Marshal(reqBody)
+	jsonData, _ := json.Marshal(payload)
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -509,57 +503,44 @@ func SummarizeNotes(text string) (string, error) {
 
 	responseBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return "", fmt.Errorf("failed to read Gemini summary response: %w", readErr)
+		return "", fmt.Errorf("failed to read OpenAI summary response: %w", readErr)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if isGeminiRateLimited(resp.StatusCode, responseBody) {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			log.Printf("[GEMINI_RATE_LIMIT] 429 on SummarizeNotes")
 			return "", ErrGeminiRateLimit
 		}
-		log.Printf("[AI] Gemini Summary Error: %d | Body: %s", resp.StatusCode, string(responseBody))
-		var apiErr geminiAPIError
-		if err := json.Unmarshal(responseBody, &apiErr); err == nil {
-			parts := []string{fmt.Sprintf("gemini API error: %d", resp.StatusCode)}
-			if strings.TrimSpace(apiErr.Error.Status) != "" {
-				parts = append(parts, apiErr.Error.Status)
-			}
-			if strings.TrimSpace(apiErr.Error.Message) != "" {
-				parts = append(parts, apiErr.Error.Message)
-			}
-			return "", errors.New(strings.Join(parts, " - "))
-		}
-		return "", fmt.Errorf("gemini API error: %d", resp.StatusCode)
+		log.Printf("[AI] OpenAI Summary Error: %d | Body: %s", resp.StatusCode, string(responseBody))
+		return "", fmt.Errorf("openai API error: %d", resp.StatusCode)
 	}
 
 	log.Printf("[GEMINI_SUMMARY_PREVIEW] %.300s", string(responseBody))
 	log.Println("[GEMINI_SUMMARY_RAW]", string(responseBody))
 
 	var result struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 
 	if err := json.Unmarshal(responseBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse Gemini summary response: %w", err)
+		return "", fmt.Errorf("failed to parse OpenAI summary response: %w", err)
 	}
 
-	if len(result.Candidates) == 0 {
-		return "", fmt.Errorf("no candidates returned from Gemini")
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no choices returned from OpenAI")
 	}
 
-	if len(result.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content parts returned from Gemini")
+	if result.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("no content returned from OpenAI")
 	}
 
-	summaryText := strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)
+	summaryText := strings.TrimSpace(result.Choices[0].Message.Content)
 	if summaryText == "" {
-		return "", fmt.Errorf("empty summary returned from Gemini")
+		return "", fmt.Errorf("empty summary returned from OpenAI")
 	}
 	log.Printf("[GEMINI_SUMMARY] summary_len=%d", len(summaryText))
 
@@ -574,9 +555,13 @@ func GenerateQuestionsFromNotes(summary string, count int, difficulty string) ([
 // GenerateQuestionsFromNotesWithMinMatches derives MCQ questions from a technical summary.
 // minKeywordMatches=0 enables adaptive grounding strictness.
 func GenerateQuestionsFromNotesWithMinMatches(summary string, count int, difficulty string, minKeywordMatches int) ([]GeneratedQuestion, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY not found")
+		return nil, fmt.Errorf("OPENAI_API_KEY not found")
+	}
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "gpt-4.1-mini"
 	}
 
 	prompt := fmt.Sprintf(`You are an expert technical interviewer AI.
@@ -637,22 +622,24 @@ Each object must follow EXACT structure:
 SUMMARY:
 %s`, count, difficulty, count, summary)
 
-	type Part struct {
-		Text string `json:"text"`
-	}
-	type Content struct {
-		Parts []Part `json:"parts"`
-	}
-	type RequestBody struct {
-		Contents []Content `json:"contents"`
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
 	}
 
-	reqBody := RequestBody{Contents: []Content{{Parts: []Part{{Text: prompt}}}}}
-	jsonData, _ := json.Marshal(reqBody)
+	jsonData, _ := json.Marshal(payload)
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -663,38 +650,36 @@ SUMMARY:
 		return nil, fmt.Errorf("failed to read AI response body: %w", readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		if isGeminiRateLimited(resp.StatusCode, rawBody) {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			log.Printf("[GEMINI_RATE_LIMIT] 429 on GenerateQuestionsFromNotes")
 			return nil, ErrGeminiRateLimit
 		}
-		log.Printf("[NOTES][generate] Gemini notes generation status=%d preview=%.200s", resp.StatusCode, string(rawBody))
-		return nil, fmt.Errorf("gemini API error: status %d", resp.StatusCode)
+		log.Printf("[NOTES][generate] OpenAI notes generation status=%d preview=%.200s", resp.StatusCode, string(rawBody))
+		return nil, fmt.Errorf("openai API error: status %d", resp.StatusCode)
 	}
 
 	var result struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 
 	if err := json.Unmarshal(rawBody, &result); err != nil {
-		log.Printf("[NOTES][generate] malformed gemini envelope preview=%.200s", string(rawBody))
+		log.Printf("[NOTES][generate] malformed openai envelope preview=%.200s", string(rawBody))
 		return nil, fmt.Errorf("failed to parse AI-generated notes questions")
 	}
 
-	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
-		log.Printf("[NOTES][generate] empty gemini candidates preview=%.200s", string(rawBody))
-		return nil, fmt.Errorf("empty response from gemini")
+	if len(result.Choices) == 0 || result.Choices[0].Message.Content == "" {
+		log.Printf("[NOTES][generate] empty openai choices preview=%.200s", string(rawBody))
+		return nil, fmt.Errorf("empty response from openai")
 	}
 
-	rawText := result.Candidates[0].Content.Parts[0].Text
+	rawText := result.Choices[0].Message.Content
 	if strings.TrimSpace(rawText) == "" {
-		log.Printf("[NOTES][generate] empty candidate text preview=%.200s", string(rawBody))
-		return nil, fmt.Errorf("empty response from gemini")
+		log.Printf("[NOTES][generate] empty choice content preview=%.200s", string(rawBody))
+		return nil, fmt.Errorf("empty response from openai")
 	}
 	cleaned := cleanGeminiResponse(rawText)
 
