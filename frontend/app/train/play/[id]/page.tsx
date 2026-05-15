@@ -7,12 +7,11 @@ import { TrainingSolver } from "@/components/train/training-solver"
 import { Loader2, ShieldAlert, ArrowLeft, RefreshCcw, Info, ShieldCheck } from "lucide-react"
 import { API_URL } from "@/lib/api-config"
 
-export default function TrainingPlayPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
-  const params = use(paramsPromise)
+export default function TrainingPlayPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  const { id } = params
+  const id = params.id
   const topic = searchParams.get("topic") || "General"
   const mode = searchParams.get("mode") || "Standard"
   const difficulty = searchParams.get("difficulty") || "Medium"
@@ -149,7 +148,7 @@ export default function TrainingPlayPage({ params: paramsPromise }: { params: Pr
         return {
           id: String(q.id),
           prompt: q.prompt || "No prompt provided",
-          type: q.type,
+          type: q.type || "mcq", // Fallback to mcq if type is missing
           options: normalizedOptions,
           explanation: q.explanation,
           starterCode: q.starterCode,

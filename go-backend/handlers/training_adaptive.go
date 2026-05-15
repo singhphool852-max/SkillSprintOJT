@@ -378,9 +378,12 @@ func SubmitAdaptiveAnswer(c *gin.Context) {
 	var tq models.TrainingQuestion
 	if err := database.DB.Where("id = ?", sub.QuestionID).First(&tq).Error; err == nil {
 		if tq.Source == "recovery" {
+			// Match by userID and prompt. 
+			// For coding, the tq.Prompt might be "Title \n\n Description", 
+			// so we use a LIKE match or check if it starts with the title.
 			var wq models.UserWrongQuestion
-			// Match by userID and prompt (since it's a snapshot)
-			if err := database.DB.Where("userId = ? AND questionTitle = ?", userID, tq.Prompt).First(&wq).Error; err == nil {
+			err := database.DB.Where("userId = ? AND (questionTitle = ? OR ? LIKE questionTitle || '%')", userID, tq.Prompt, tq.Prompt).First(&wq).Error
+			if err == nil {
 				if sub.IsCorrect {
 					wq.CorrectStreak++
 					log.Printf("[ADAPTIVE] Correct streak incremented to %d for question %s", wq.CorrectStreak, wq.QuestionID)
