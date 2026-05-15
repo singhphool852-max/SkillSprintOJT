@@ -31,10 +31,11 @@ function LoadingScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Inner — calls useSearchParams(), must be inside a <Suspense> boundary.
-// All logic lives here. Receives id as a plain string prop.
+// TrainPlayContent — calls useSearchParams(), must be inside <Suspense>.
+// Receives params as a prop; destructures id directly (no React.use()).
 // ---------------------------------------------------------------------------
-function TrainingPlayInner({ id }: { id: string }) {
+function TrainPlayContent({ params }: { params: { id: string } }) {
+  const { id } = params
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -43,10 +44,10 @@ function TrainingPlayInner({ id }: { id: string }) {
   const difficulty = searchParams.get("difficulty") || "Medium"
   const count      = parseInt(searchParams.get("count") || "10")
 
-  const [questions,    setQuestions]    = useState<any[]>([])
-  const [loading,      setLoading]      = useState(true)
+  const [questions,     setQuestions]     = useState<any[]>([])
+  const [loading,       setLoading]       = useState(true)
   const [offlineStatus, setOfflineStatus] = useState<string | null>(null)
-  const [summary,      setSummary]      = useState<string | undefined>(undefined)
+  const [summary,       setSummary]       = useState<string | undefined>(undefined)
 
   // sessionStorage — guarded for SSR safety
   useEffect(() => {
@@ -61,7 +62,7 @@ function TrainingPlayInner({ id }: { id: string }) {
     }
   }, [mode])
 
-  const fetchQuestions = async () => {
+  const fetchQuestions = useCallback(async () => {
     if (!id) return
     setLoading(true)
     setOfflineStatus(null)
@@ -172,18 +173,18 @@ function TrainingPlayInner({ id }: { id: string }) {
           }
 
           return {
-            id:           String(q.id || q.ID || index),
-            prompt:       q.prompt || q.Prompt || "No prompt provided",
-            type:         (q.type || q.Type || "mcq").toLowerCase(),
-            options:      Array.isArray(normalizedOptions) ? normalizedOptions : [],
-            explanation:  q.explanation || q.Explanation || "",
-            starterCode:  q.starterCode || q.StarterCode || "",
-            constraints:  q.constraints || q.Constraints || "",
-            testCases:    Array.isArray(normalizedTestCases) ? normalizedTestCases : [],
-            maxScore:     10,
-            _answer:      q.answer || q.Answer || "",
-            _source:      q.source || q.Source || "unknown",
-            _sessionId:   sessionId,
+            id:          String(q.id || q.ID || index),
+            prompt:      q.prompt || q.Prompt || "No prompt provided",
+            type:        (q.type || q.Type || "mcq").toLowerCase(),
+            options:     Array.isArray(normalizedOptions) ? normalizedOptions : [],
+            explanation: q.explanation || q.Explanation || "",
+            starterCode: q.starterCode || q.StarterCode || "",
+            constraints: q.constraints || q.Constraints || "",
+            testCases:   Array.isArray(normalizedTestCases) ? normalizedTestCases : [],
+            maxScore:    10,
+            _answer:     q.answer || q.Answer || "",
+            _source:     q.source || q.Source || "unknown",
+            _sessionId:  sessionId,
           }
         })
         .filter(Boolean)
@@ -197,23 +198,26 @@ function TrainingPlayInner({ id }: { id: string }) {
       setQuestions([])
       setLoading(false)
     }
-  }
+  }, [id, mode, difficulty, count])
 
   useEffect(() => {
     fetchQuestions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [fetchQuestions])
+
+  // Memoize the isMistakesMode check to avoid recomputing on every render
+  const isMistakesMode = useMemo(
+    () =>
+      mode.toUpperCase() === "MISTAKES" ||
+      mode.toUpperCase() === "RECOVERY MODE" ||
+      mode.toUpperCase() === "RECOVERY",
+    [mode]
+  )
 
   // --- Loading state ---
   if (loading) return <LoadingScreen />
 
   // --- Empty state ---
   if (questions.length === 0) {
-    const isMistakesMode =
-      mode.toUpperCase() === "MISTAKES" ||
-      mode.toUpperCase() === "RECOVERY MODE" ||
-      mode.toUpperCase() === "RECOVERY"
-
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-6 bg-deep-bg p-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent animate-pulse" />
@@ -302,9 +306,9 @@ function TrainingPlayInner({ id }: { id: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Default export — thin shell that provides the required Suspense boundary
-// around TrainingPlayInner (which calls useSearchParams).
-// params is typed as { id: string } — no Promise, no React.use().
+// Default export — provides the required Suspense boundary around
+// TrainPlayContent (which calls useSearchParams).
+// params typed as { id: string } — no Promise, no React.use().
 // ---------------------------------------------------------------------------
 export default function TrainingPlayPage({
   params,
@@ -312,8 +316,14 @@ export default function TrainingPlayPage({
   params: { id: string }
 }) {
   return (
-    <Suspense fallback={<LoadingScreen />}>
-      <TrainingPlayInner id={params.id} />
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <span className="font-mono text-xs text-muted-foreground uppercase">Loading...</span>
+        </div>
+      }
+    >
+      <TrainPlayContent params={params} />
     </Suspense>
   )
 }
