@@ -1,17 +1,42 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
+import { useEffect, useState, use, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { TrainingSolver } from "@/components/train/training-solver"
 import { Loader2, ShieldAlert, ArrowLeft, RefreshCcw, Info, ShieldCheck } from "lucide-react"
 import { API_URL } from "@/lib/api-config"
+import { ErrorBoundary } from "@/components/train/ErrorBoundary"
 
-export default function TrainingPlayPage({ params }: { params: { id: string } }) {
+// Wrap the default export in Suspense so that useSearchParams() inside
+// TrainingPlayInner is always rendered inside a Suspense boundary.
+// This is required in Next.js 15 production builds — without it the page
+// throws a client-side exception during static rendering.
+export default function TrainingPlayPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-deep-bg">
+        <div className="relative">
+          <Loader2 className="h-12 w-12 text-neon-cyan animate-spin" />
+          <div className="absolute inset-0 h-12 w-12 border-b-2 border-neon-cyan/30 rounded-full animate-pulse" />
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <span className="font-mono text-[10px] tracking-[0.4em] text-neon-cyan uppercase">Initializing Neural Session</span>
+          <span className="font-mono text-[8px] text-muted-foreground uppercase opacity-40 italic">Decrypting logical parameters...</span>
+        </div>
+      </div>
+    }>
+      <TrainingPlayInner params={paramsPromise} />
+    </Suspense>
+  )
+}
+
+function TrainingPlayInner({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = use(paramsPromise)
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  const id = params.id
+  const id = params?.id
   const topic = searchParams.get("topic") || "General"
   const mode = searchParams.get("mode") || "Standard"
   const difficulty = searchParams.get("difficulty") || "Medium"
@@ -115,52 +140,59 @@ export default function TrainingPlayPage({ params }: { params: { id: string } })
         apiData = await res.json();
       }
 
-      console.log("Fetched session:", apiData);
+      console.log("[TrainPlay] API Success:", apiData);
 
-      const sessionQuestions = apiData.questions || [];
-      const sessionId = apiData.session_id || apiData.sessionId;
+      const rawQuestions = apiData.questions || apiData.Questions || [];
+      const sessionId = apiData.session_id || apiData.sessionId || apiData.SessionID || id;
 
-      if (sessionQuestions.length === 0) {
-        setOfflineStatus("No questions available");
+      if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+        console.warn("[TrainPlay] No questions found in payload:", apiData);
+        setOfflineStatus("Neural vault returned no compatible datasets for this query.");
         setQuestions([]);
         setLoading(false);
         return;
       }
 
-      const mapped = sessionQuestions.map((q: any) => {
-        let normalizedOptions = q.options;
-        if (typeof q.options === 'string') {
-          try { normalizedOptions = JSON.parse(q.options); } catch { normalizedOptions = []; }
+      const mapped = rawQuestions.map((q: any, index: number) => {
+        if (!q) {
+          console.warn(`[TrainPlay] Skipping null question at index ${index}`);
+          return null;
         }
 
-        if (q.type === "mcq" && Array.isArray(normalizedOptions)) {
-           normalizedOptions = normalizedOptions.map((optText: string, idx: number) => {
+        let normalizedOptions = q.options || q.Options;
+        if (typeof normalizedOptions === 'string') {
+          try { normalizedOptions = JSON.parse(normalizedOptions); } catch { normalizedOptions = []; }
+        }
+
+        if ((q.type === "mcq" || q.Type === "mcq") && Array.isArray(normalizedOptions)) {
+           normalizedOptions = normalizedOptions.map((optText: any, idx: number) => {
              if (typeof optText === 'object' && optText !== null) return optText;
-             return { id: `OPT_${q.id}_${idx}`, text: optText };
+             return { id: `OPT_${q.id || index}_${idx}`, text: String(optText || "") };
            });
         }
 
-        let normalizedTestCases = q.testCases;
-        if (typeof q.testCases === 'string') {
-          try { normalizedTestCases = JSON.parse(q.testCases); } catch { normalizedTestCases = []; }
+        let normalizedTestCases = q.testCases || q.TestCases;
+        if (typeof normalizedTestCases === 'string') {
+          try { normalizedTestCases = JSON.parse(normalizedTestCases); } catch { normalizedTestCases = []; }
         }
 
         return {
-          id: String(q.id),
-          prompt: q.prompt || "No prompt provided",
-          type: q.type || "mcq", // Fallback to mcq if type is missing
-          options: normalizedOptions,
-          explanation: q.explanation,
-          starterCode: q.starterCode,
-          constraints: q.constraints,
-          testCases: normalizedTestCases,
+          id: String(q.id || q.ID || index),
+          prompt: q.prompt || q.Prompt || "No prompt provided",
+          type: (q.type || q.Type || "mcq").toLowerCase(),
+          options: Array.isArray(normalizedOptions) ? normalizedOptions : [],
+          explanation: q.explanation || q.Explanation || "",
+          starterCode: q.starterCode || q.StarterCode || "",
+          constraints: q.constraints || q.Constraints || "",
+          testCases: Array.isArray(normalizedTestCases) ? normalizedTestCases : [],
           maxScore: 10,
-          _answer: q.answer,
-          _source: q.source,
+          _answer: q.answer || q.Answer || "",
+          _source: q.source || q.Source || "unknown",
           _sessionId: sessionId
         };
-      });
+      }).filter(Boolean);
 
+      console.log(`[TrainPlay] Successfully mapped ${mapped.length} questions`);
       setQuestions(mapped);
       setLoading(false);
 
@@ -238,26 +270,28 @@ export default function TrainingPlayPage({ params }: { params: { id: string } })
   }
 
   return (
-    <ProtectedRoute>
-      <div className="relative">
-         {offlineStatus && (
-           <div className="fixed top-20 right-8 z-50 animate-pulse">
-             <div className="flex items-center gap-2 px-3 py-2 bg-neon-yellow/10 border border-neon-yellow/40 backdrop-blur">
-               <ShieldCheck className="h-4 w-4 text-neon-yellow" />
-               <span className="font-mono text-[9px] text-neon-yellow uppercase tracking-widest font-black max-w-[200px] truncate">{offlineStatus}</span>
+    <ErrorBoundary>
+      <ProtectedRoute>
+        <div className="relative">
+           {offlineStatus && (
+             <div className="fixed top-20 right-8 z-50 animate-pulse">
+               <div className="flex items-center gap-2 px-3 py-2 bg-neon-yellow/10 border border-neon-yellow/40 backdrop-blur">
+                 <ShieldCheck className="h-4 w-4 text-neon-yellow" />
+                 <span className="font-mono text-[9px] text-neon-yellow uppercase tracking-widest font-black max-w-[200px] truncate">{offlineStatus}</span>
+               </div>
              </div>
-           </div>
-         )}
-         <TrainingSolver 
-           initialQuestions={questions}
-           topic={topic + (offlineStatus ? " (Offline)" : "")}
-           mode={mode}
-           difficulty={difficulty}
-           count={offlineStatus ? questions.length : count}
-           arenaId={id}
-           summary={summary}
-         />
-      </div>
-    </ProtectedRoute>
+           )}
+           <TrainingSolver 
+             initialQuestions={questions}
+             topic={topic + (offlineStatus ? " (Offline)" : "")}
+             mode={mode}
+             difficulty={difficulty}
+             count={offlineStatus ? questions.length : count}
+             arenaId={id}
+             summary={summary}
+           />
+        </div>
+      </ProtectedRoute>
+    </ErrorBoundary>
   )
 }
