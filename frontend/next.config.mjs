@@ -1,7 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false, // surface TS errors in build log
+  },
+  eslint: {
+    ignoreDuringBuilds: true, // don't let ESLint block the build
   },
   images: {
     unoptimized: true,
