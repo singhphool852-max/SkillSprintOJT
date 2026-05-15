@@ -40,7 +40,7 @@ func GetGlobalLeaderboard(c *gin.Context) {
 
 	var entries []LeaderboardRow
 
-	// Use GORM query builder with correct MySQL column names (camelCase)
+	// Simplified query - removed completedAt filter to test
 	query := database.DB.Table("attempts").
 		Select("attempts.userId as user_id, "+
 			"user.username as username, "+
@@ -49,13 +49,11 @@ func GetGlobalLeaderboard(c *gin.Context) {
 			"SUM(attempts.score) as total_score, "+
 			"MIN(attempts.completedAt) as earliest_submit").
 		Joins("JOIN user ON user.id = attempts.userId").
-		Where("attempts.completedAt IS NOT NULL").
-		Where("user.role != ?", "admin").
 		Group("attempts.userId, user.username").
 		Order("total_score DESC, earliest_submit ASC").
 		Limit(100)
 
-	log.Printf("[Leaderboard] Executing query...")
+	log.Printf("[Leaderboard] Executing query (simplified - no filters)...")
 
 	if err := query.Scan(&entries).Error; err != nil {
 		log.Printf("[Leaderboard] DB ERROR: %v", err)
@@ -123,25 +121,48 @@ func GetGlobalLeaderboard(c *gin.Context) {
 }
 
 // GetLeaderboardDebug → GET /api/leaderboard/debug
-// Debug endpoint to check if attempts exist in the database
+// Comprehensive debug endpoint to diagnose why leaderboard is empty
 func GetLeaderboardDebug(c *gin.Context) {
-	// Count total attempts
+	type DebugResult struct {
+		Query  string      `json:"query"`
+		Result interface{} `json:"result"`
+	}
+
+	results := []DebugResult{}
+
+	// 1. Count total attempts
 	var totalCount int64
 	database.DB.Table("attempts").Count(&totalCount)
+	results = append(results, DebugResult{
+		Query:  "SELECT COUNT(*) FROM attempts",
+		Result: totalCount,
+	})
 
-	// Count completed attempts
+	// 2. Count attempts with completedAt NOT NULL
 	var completedCount int64
 	database.DB.Table("attempts").Where("completedAt IS NOT NULL").Count(&completedCount)
+	results = append(results, DebugResult{
+		Query:  "SELECT COUNT(*) FROM attempts WHERE completedAt IS NOT NULL",
+		Result: completedCount,
+	})
 
-	// Count users
+	// 3. Count users
 	var userCount int64
 	database.DB.Table("user").Count(&userCount)
+	results = append(results, DebugResult{
+		Query:  "SELECT COUNT(*) FROM user",
+		Result: userCount,
+	})
 
-	// Count non-admin users
+	// 4. Count non-admin users
 	var nonAdminCount int64
 	database.DB.Table("user").Where("role != ?", "admin").Count(&nonAdminCount)
+	results = append(results, DebugResult{
+		Query:  "SELECT COUNT(*) FROM user WHERE role != 'admin'",
+		Result: nonAdminCount,
+	})
 
-	// Get sample attempts
+	// 5. Sample attempts - raw data
 	type SampleAttempt struct {
 		ID          string `gorm:"column:id"`
 		UserID      string `gorm:"column:userId"`
@@ -151,22 +172,108 @@ func GetLeaderboardDebug(c *gin.Context) {
 	var samples []SampleAttempt
 	database.DB.Table("attempts").
 		Select("id, userId, score, completedAt").
-		Where("completedAt IS NOT NULL").
 		Order("completedAt DESC").
 		Limit(5).
 		Scan(&samples)
+	results = append(results, DebugResult{
+		Query:  "SELECT id, userId, score, completedAt FROM attempts ORDER BY completedAt DESC LIMIT 5",
+		Result: samples,
+	})
 
-	log.Printf("[LeaderboardDebug] Total=%d Completed=%d Users=%d NonAdmin=%d Samples=%d",
-		totalCount, completedCount, userCount, nonAdminCount, len(samples))
+	// 6. Sample users
+	type SampleUser struct {
+		ID       string `gorm:"column:id"`
+		Username string `gorm:"column:username"`
+		Role     string `gorm:"column:role"`
+	}
+	var userSamples []SampleUser
+	database.DB.Table("user").
+		Select("id, username, role").
+		Limit(5).
+		Scan(&userSamples)
+	results = append(results, DebugResult{
+		Query:  "SELECT id, username, role FROM user LIMIT 5",
+		Result: userSamples,
+	})
+
+	// 7. Try the actual leaderboard query to see what it returns
+	type LeaderboardRow struct {
+		UserID         string `gorm:"column:user_id"`
+		Username       string `gorm:"column:username"`
+		TestsCount     int    `gorm:"column:tests_count"`
+		BestScore      int    `gorm:"column:best_score"`
+		TotalScore     int    `gorm:"column:total_score"`
+		EarliestSubmit string `gorm:"column:earliest_submit"`
+	}
+	var leaderboardTest []LeaderboardRow
+	testQuery := database.DB.Table("attempts").
+		Select("attempts.userId as user_id, "+
+			"user.username as username, "+
+			"COUNT(DISTINCT attempts.id) as tests_count, "+
+			"MAX(attempts.score) as best_score, "+
+			"SUM(attempts.score) as total_score, "+
+			"MIN(attempts.completedAt) as earliest_submit").
+		Joins("JOIN user ON user.id = attempts.userId").
+		Where("attempts.completedAt IS NOT NULL").
+		Where("user.role != ?", "admin").
+		Group("attempts.userId, user.username").
+		Order("total_score DESC").
+		Limit(5)
+	
+	testQuery.Scan(&leaderboardTest)
+	results = append(results, DebugResult{
+		Query:  "Leaderboard query (with all conditions)",
+		Result: leaderboardTest,
+	})
+
+	// 8. Try without role filter
+	var leaderboardNoRoleFilter []LeaderboardRow
+	database.DB.Table("attempts").
+		Select("attempts.userId as user_id, "+
+			"user.username as username, "+
+			"COUNT(DISTINCT attempts.id) as tests_count, "+
+			"MAX(attempts.score) as best_score, "+
+			"SUM(attempts.score) as total_score").
+		Joins("JOIN user ON user.id = attempts.userId").
+		Where("attempts.completedAt IS NOT NULL").
+		Group("attempts.userId, user.username").
+		Order("total_score DESC").
+		Limit(5).
+		Scan(&leaderboardNoRoleFilter)
+	results = append(results, DebugResult{
+		Query:  "Leaderboard query (without role filter)",
+		Result: leaderboardNoRoleFilter,
+	})
+
+	// 9. Try without completedAt filter
+	var leaderboardNoCompletedFilter []LeaderboardRow
+	database.DB.Table("attempts").
+		Select("attempts.userId as user_id, "+
+			"user.username as username, "+
+			"COUNT(DISTINCT attempts.id) as tests_count, "+
+			"MAX(attempts.score) as best_score, "+
+			"SUM(attempts.score) as total_score").
+		Joins("JOIN user ON user.id = attempts.userId").
+		Group("attempts.userId, user.username").
+		Order("total_score DESC").
+		Limit(5).
+		Scan(&leaderboardNoCompletedFilter)
+	results = append(results, DebugResult{
+		Query:  "Leaderboard query (without completedAt filter)",
+		Result: leaderboardNoCompletedFilter,
+	})
+
+	log.Printf("[LeaderboardDebug] Total=%d Completed=%d Users=%d NonAdmin=%d",
+		totalCount, completedCount, userCount, nonAdminCount)
 
 	c.JSON(http.StatusOK, gin.H{
-		"tableName":         "attempts",
-		"userTableName":     "user",
-		"totalAttempts":     totalCount,
-		"completedAttempts": completedCount,
-		"totalUsers":        userCount,
-		"nonAdminUsers":     nonAdminCount,
-		"sampleAttempts":    samples,
-		"message":           "Debug info retrieved successfully",
+		"message": "Debug queries executed",
+		"results": results,
+		"summary": gin.H{
+			"totalAttempts":     totalCount,
+			"completedAttempts": completedCount,
+			"totalUsers":        userCount,
+			"nonAdminUsers":     nonAdminCount,
+		},
 	})
 }
