@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, Suspense } from "react"
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { TrainingSolver } from "@/components/train/training-solver"
