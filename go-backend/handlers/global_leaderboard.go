@@ -68,6 +68,17 @@ func GetGlobalLeaderboard(c *gin.Context) {
 
 	log.Printf("[Leaderboard] Found %d entries", len(entries))
 
+	// Diagnostic: If no entries found, check why
+	if len(entries) == 0 {
+		var debugCount int64
+		database.DB.Table("test_attempts").Where("submittedAt IS NOT NULL").Count(&debugCount)
+		log.Printf("[Leaderboard] DIAGNOSTIC: test_attempts with submittedAt NOT NULL = %d", debugCount)
+		
+		var totalCount int64
+		database.DB.Table("test_attempts").Count(&totalCount)
+		log.Printf("[Leaderboard] DIAGNOSTIC: total test_attempts = %d", totalCount)
+	}
+
 	// Transform to response format
 	results := make([]GlobalLeaderboardEntry, len(entries))
 	totalUsers := len(entries)

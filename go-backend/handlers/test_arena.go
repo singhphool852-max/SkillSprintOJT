@@ -737,6 +737,7 @@ func SubmitTestAttempt(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attempt"})
 		return
 	}
+	log.Printf("[SUBMIT-ATTEMPT] Updated attempt: rows affected=%d", result.RowsAffected)
 
 	if err := tx.Commit().Error; err != nil {
 		log.Printf("[SUBMIT-ATTEMPT] commit failed: %v", err)
@@ -744,7 +745,7 @@ func SubmitTestAttempt(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[SUBMIT-ATTEMPT] SUCCESS: attemptID=%s score=%d auto=%v", attempt.ID, totalScore, isAutoSubmitted)
+	log.Printf("[SUBMIT-ATTEMPT] SUCCESS: attemptID=%s score=%.0f auto=%v submittedAt=%v", attempt.ID, totalScore, isAutoSubmitted, submittedAt)
 
 	// Refresh attempt with committed values for post-commit side effects
 	attempt.Score = totalScore
