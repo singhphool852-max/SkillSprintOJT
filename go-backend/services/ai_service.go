@@ -343,41 +343,28 @@ func GenerateQuestions(topic, difficulty string, count int, excludePrompts []str
 		excludeText = fmt.Sprintf("\nIMPORTANT: DO NOT generate questions similar to these existing prompts: %s", strings.Join(excludePrompts, " | "))
 	}
 
-	// 3. Build the prompt — mix of subjective (theory) and MCQ questions
-	prompt := fmt.Sprintf(`Generate EXACTLY %d training questions for topic: %s, difficulty: %s.
+	// 3. Build the strict prompt — MCQ only for topic-based generation
+	prompt := fmt.Sprintf(`Generate EXACTLY %d MCQ questions for topic: %s, difficulty: %s.
 %s
 
-Generate a MIX of question types:
-- About 60%% should be SUBJECTIVE (theory/open-ended, type: "subjective")
-- About 40%% should be MCQ (multiple choice, type: "mcq")
-
-Return ONLY a JSON array. No markdown. No text outside JSON.
-
-Each SUBJECTIVE question must follow this structure:
-{
-  "type": "subjective",
-  "prompt": "Clear theory/conceptual question requiring a written explanation",
-  "options": [],
-  "answer": "A detailed model answer that the AI will use to evaluate the user's response",
-  "explanation": "Brief technical explanation of the concept",
-  "difficulty": "%s"
-}
-
-Each MCQ question must follow this structure:
-{
-  "type": "mcq",
-  "prompt": "Question text here (clear and technical)",
-  "options": ["Option A", "Option B", "Option C", "Option D"],
-  "answer": "Exact text of the correct option (must match one of the options exactly)",
-  "explanation": "Brief technical explanation",
-  "difficulty": "%s"
-}
+Return ONLY JSON array:
+[
+  {
+    "type": "mcq",
+    "prompt": "Question text here (clear and technical)",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "answer": "Exact text of the correct option (must match one of the options)",
+    "explanation": "Brief technical explanation",
+    "difficulty": "%s"
+  }
+]
 
 Rules:
 - Generate diverse questions covering different subtopics.
 - Do not repeat the same concept phrased differently.
-- Subjective questions should test deep understanding, not just definitions.
-- No markdown formatting. No text outside JSON. No `+"`"+`json code fences.%s`, count, topic, difficulty, varietyGuidance, difficulty, difficulty, excludeText)
+- No markdown formatting.
+- No text outside JSON.
+- No `+"`"+`json code fences.%s`, count, topic, difficulty, varietyGuidance, difficulty, excludeText)
 
 	// 4. Build the OpenAI request payload
 	payload := map[string]interface{}{
@@ -457,22 +444,12 @@ Rules:
 		return nil, fmt.Errorf("AI generation failed: could not parse response")
 	}
 
-	// 9. Safely Filter & Validate
+	// 9. Safely Filter & Validate — MCQ only, options required
 	var questions []GeneratedQuestion
 	for _, q := range rawQuestions {
-		if q.Prompt == "" || q.Answer == "" {
-			log.Printf("[AI SKIP] Dropping malformed question: prompt_len=%d", len(q.Prompt))
+		if q.Prompt == "" || len(q.Options) < 2 || q.Answer == "" {
+			log.Printf("[AI SKIP] Dropping malformed question: prompt_len=%d options=%d", len(q.Prompt), len(q.Options))
 			continue
-		}
-		// MCQ must have at least 2 options; subjective questions have none
-		qType := strings.ToLower(q.Type)
-		if qType == "mcq" && len(q.Options) < 2 {
-			log.Printf("[AI SKIP] Dropping MCQ with insufficient options: prompt_len=%d options=%d", len(q.Prompt), len(q.Options))
-			continue
-		}
-		// Default type to subjective if missing or unrecognized
-		if qType != "mcq" && qType != "coding" {
-			q.Type = "subjective"
 		}
 		questions = append(questions, q)
 	}
@@ -591,7 +568,8 @@ func GenerateQuestionsFromNotesWithMinMatches(summary string, count int, difficu
 
 You are given a SUMMARY extracted from a user's personal notes.
 
-Your task is to generate EXACTLY %d high-quality MCQ (multiple choice) questions STRICTLY based on the provided summary.
+Your task is to generate EXACTLY %d high-quality SUBJECTIVE (open-ended theory) questions STRICTLY based on the provided summary.
+These questions require written answers and will be evaluated by AI.
 
 CRITICAL RULES (MUST FOLLOW):
 
@@ -607,19 +585,18 @@ CRITICAL RULES (MUST FOLLOW):
 - Maximum ONE question per concept.
 
 3. QUESTION QUALITY
-- Questions must test understanding, not just definitions.
-- Include logic-based, scenario-based, or application-based questions where possible.
-- Avoid trivial or overly obvious questions.
+- Questions must test deep understanding, not just definitions.
+- Include "explain", "why", "how", "compare", "describe" style questions.
+- Avoid trivial or yes/no questions.
 
-4. OPTIONS
-- Each question must have EXACTLY 4 options.
-- Only ONE correct answer.
-- Options should be realistic and not obviously wrong.
+4. MODEL ANSWER
+- Each question MUST include a detailed model answer.
+- The model answer will be used by AI to evaluate the user's written response.
+- Keep it accurate, concise, and technically correct.
 
 5. EXPLANATION
-- Each question MUST include an explanation.
+- Each question MUST include a brief explanation of the concept.
 - Explanation must reference the concept from the summary.
-- Keep explanation clear and useful for learning.
 
 6. FORMAT (STRICT JSON ONLY)
 Return ONLY a JSON array. No markdown. No text.
@@ -628,10 +605,11 @@ Each object must follow EXACT structure:
 
 [
   {
-    "prompt": "question text",
-    "options": ["A", "B", "C", "D"],
-    "answer": "correct option text",
-    "explanation": "clear explanation based on summary",
+    "type": "subjective",
+    "prompt": "Open-ended theory question based on the summary",
+    "options": [],
+    "answer": "Detailed model answer for AI evaluation",
+    "explanation": "Brief explanation of the concept from the summary",
     "difficulty": "%s"
   }
 ]
@@ -720,7 +698,6 @@ SUMMARY:
 	valid := make([]GeneratedQuestion, 0, len(rawQuestions))
 	for _, q := range rawQuestions {
 		if strings.TrimSpace(q.Prompt) == "" ||
-			len(q.Options) < 4 ||
 			strings.TrimSpace(q.Answer) == "" ||
 			strings.TrimSpace(q.Explanation) == "" {
 			continue
@@ -728,6 +705,8 @@ SUMMARY:
 		if !isGroundedInSummary(q.Prompt, q.Explanation, summaryKeywords, requiredMatches) {
 			continue
 		}
+		// Force type to subjective for notes-generated questions
+		q.Type = "subjective"
 		if strings.TrimSpace(q.Difficulty) == "" {
 			q.Difficulty = difficulty
 		}
