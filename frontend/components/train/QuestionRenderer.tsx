@@ -1,5 +1,5 @@
 "use client"
-
+import { useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -26,19 +26,20 @@ interface RendererProps {
 }
 
 export function QuestionRenderer({ question, answer, onChange, isLocked, result }: RendererProps) {
-  // Normalize types
-  const type = question.type.toLowerCase()
+  // Normalize types safely
+  const type = (question?.type || "mcq").toLowerCase()
 
   // Use starter code if answer is empty and we have it
   useEffect(() => {
-    if (!answer && question.starterCode && !isLocked) {
+    if (!answer && question?.starterCode && !isLocked) {
       onChange(question.starterCode)
     }
-  }, [question.id, question.starterCode, answer, isLocked, onChange])
+  }, [question?.id, question?.starterCode, answer, isLocked, onChange])
 
   // 1. MCQ Renderer
   if (type === "mcq") {
-    if (!question.options || question.options.length === 0) {
+    const options = question?.options || []
+    if (options.length === 0) {
       return (
         <div className="p-6 border border-neon-pink/30 bg-neon-pink/5 font-mono text-[10px] text-neon-pink uppercase tracking-widest animate-pulse">
            Error: No options discovered for this query.
@@ -49,7 +50,7 @@ export function QuestionRenderer({ question, answer, onChange, isLocked, result 
     return (
       <div className="space-y-6">
         <div className="grid gap-3 sm:grid-cols-2">
-          {question.options.map((opt) => {
+          {options.map((opt) => {
             const isSelected = answer === opt.id
             const isCorrect = result?.correctOptionId === opt.id
             const isWrong = isSelected && result && !isCorrect

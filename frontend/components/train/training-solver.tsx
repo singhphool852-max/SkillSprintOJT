@@ -66,9 +66,9 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
 
   const [timeLeft, setTimeLeft] = useState(defaultTime)
 
-  const currentQuestion = initialQuestions[currentQ]
-  const currentEvaluation = evaluations[currentQuestion?.id]
-  const isAnswered = !!answers[currentQuestion?.id]
+  const currentQuestion = initialQuestions?.[currentQ]
+  const currentEvaluation = evaluations[currentQuestion?.id || ""]
+  const isAnswered = !!answers[currentQuestion?.id || ""]
 
   const handleSubmitAnswer = async () => {
     // 1. Pre-flight: check answer exists
@@ -363,7 +363,8 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
     )
   }
 
-  const progressPercent = ((currentQ + 1) / initialQuestions.length) * 100
+  const totalQuestions = initialQuestions?.length || 0
+  const progressPercent = totalQuestions > 0 ? ((currentQ + 1) / totalQuestions) * 100 : 0
   const timerPercent = (timeLeft / defaultTime) * 100
 
   return (
@@ -445,9 +446,9 @@ export function TrainingSolver({ initialQuestions, topic, mode, difficulty, coun
             <div className="mb-8">
                <div className="flex items-center gap-3 mb-4">
                   <span className="font-mono text-[9px] px-2 py-1 bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20 uppercase tracking-widest">
-                    {currentQuestion.type.replace("_", " ")}
+                    {(currentQuestion.type || "mcq").replace("_", " ")}
                   </span>
-                  {currentQuestion._source === "ai" ? (
+                  {(currentQuestion._source === "ai" || currentQuestion._source === "ai_adaptive" || currentQuestion._source === "ai_similar") ? (
                     <span className="font-mono text-[9px] px-2 py-1 bg-neon-pink/10 text-neon-pink border border-neon-pink/20 uppercase tracking-widest flex items-center gap-1.5">
                       <Zap className="h-2 w-2 fill-current" /> AI SYNTHESIZED
                     </span>

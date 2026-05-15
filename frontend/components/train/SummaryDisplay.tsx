@@ -16,8 +16,9 @@ export function SummaryDisplay({ summary, onStart, topic, difficulty }: SummaryD
   const [sections, setSections] = useState<string[]>([])
 
   useEffect(() => {
-    // Split summary into bullet points if they exist
-    const parts = summary.split("\n").filter(p => p.trim().length > 0)
+    // Split summary safely
+    const safeSummary = summary || ""
+    const parts = safeSummary.split("\n").filter(p => p.trim().length > 0)
     setSections(parts)
   }, [summary])
 
@@ -110,7 +111,7 @@ export function SummaryDisplay({ summary, onStart, topic, difficulty }: SummaryD
               </div>
 
               <div className="space-y-6">
-                {sections.map((section, idx) => (
+                {(sections || []).map((section, idx) => (
                   <div 
                     key={idx} 
                     className="flex gap-4 animate-in fade-in slide-in-from-left-4 duration-500"
