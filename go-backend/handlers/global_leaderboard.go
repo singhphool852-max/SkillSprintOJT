@@ -61,6 +61,15 @@ func GetGlobalLeaderboard(c *gin.Context) {
 
 	if result.Error != nil {
 		log.Printf("[Leaderboard] Query error: %v", result.Error)
+		
+		// Fallback diagnostic: Check if tables exist and have data
+		var count int64
+		database.DB.Raw("SELECT COUNT(*) FROM test_attempts").Scan(&count)
+		log.Printf("[Leaderboard] Direct count from test_attempts: %d", count)
+		
+		database.DB.Raw("SELECT COUNT(*) FROM `user`").Scan(&count)
+		log.Printf("[Leaderboard] Direct count from user table: %d", count)
+		
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Database query failed",
 			"details": result.Error.Error(),
@@ -72,6 +81,15 @@ func GetGlobalLeaderboard(c *gin.Context) {
 
 	// Diagnostic: If no entries found, check why
 	if len(entries) == 0 {
+		// Fallback diagnostic: Check table counts
+		var testAttemptsCount int64
+		database.DB.Raw("SELECT COUNT(*) FROM test_attempts").Scan(&testAttemptsCount)
+		log.Printf("[Leaderboard] DIAGNOSTIC: Direct count from test_attempts = %d", testAttemptsCount)
+		
+		var userCount int64
+		database.DB.Raw("SELECT COUNT(*) FROM `user`").Scan(&userCount)
+		log.Printf("[Leaderboard] DIAGNOSTIC: Direct count from user table = %d", userCount)
+		
 		var debugCount int64
 		database.DB.Table("test_attempts").Where("submittedAt IS NOT NULL").Count(&debugCount)
 		log.Printf("[Leaderboard] DIAGNOSTIC: test_attempts with submittedAt NOT NULL = %d", debugCount)
