@@ -40,28 +40,30 @@ func GetGlobalLeaderboard(c *gin.Context) {
 
 	var entries []LeaderboardRow
 
-	// FIXED: Use test_attempts table (not attempts) and submittedAt (not completedAt)
-	query := database.DB.Table("test_attempts").
-		Select("test_attempts.userId as user_id, "+
-			"user.username as username, "+
-			"COUNT(DISTINCT test_attempts.id) as tests_count, "+
-			"MAX(test_attempts.score) as best_score, "+
-			"SUM(test_attempts.score) as total_score, "+
-			"MIN(test_attempts.submittedAt) as earliest_submit").
-		Joins("JOIN user ON user.id = test_attempts.userId").
-		Where("test_attempts.submittedAt IS NOT NULL").
-		Where("user.role != ?", "admin").
-		Group("test_attempts.userId, user.username").
-		Order("total_score DESC, earliest_submit ASC").
-		Limit(100)
+	// FIXED: Use raw SQL with exact column names from GORM tags
+	// Table: user (not users), Columns: userId, submittedAt (camelCase)
+	result := database.DB.Raw(`
+		SELECT 
+			ta.userId as user_id,
+			u.username as username,
+			COUNT(DISTINCT ta.id) as tests_count,
+			MAX(ta.score) as best_score,
+			SUM(ta.score) as total_score,
+			MIN(ta.submittedAt) as earliest_submit
+		FROM test_attempts ta
+		JOIN user u ON u.id = ta.userId
+		WHERE ta.submittedAt IS NOT NULL
+		  AND u.role != 'admin'
+		GROUP BY ta.userId, u.username
+		ORDER BY total_score DESC, earliest_submit ASC
+		LIMIT 100
+	`).Scan(&entries)
 
-	log.Printf("[Leaderboard] Executing query on test_attempts table...")
-
-	if err := query.Scan(&entries).Error; err != nil {
-		log.Printf("[Leaderboard] DB ERROR: %v", err)
+	if result.Error != nil {
+		log.Printf("[Leaderboard] Query error: %v", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Database query failed",
-			"details": err.Error(),
+			"details": result.Error.Error(),
 		})
 		return
 	}

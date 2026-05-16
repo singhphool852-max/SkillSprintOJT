@@ -255,14 +255,16 @@ export default function TrainPage() {
 
   // Handle incoming mode from dashboard or arena redirect
   useEffect(() => {
+    if (hasAutoStarted.current) return
+    
     const mode = searchParams?.get('mode')
-    if ((mode === 'adaptive' || mode === 'mistakes' || mode === 'recovery') && !hasAutoStarted.current) {
+    if (mode === 'adaptive' || mode === 'mistakes' || mode === 'recovery') {
       hasAutoStarted.current = true
       const topicId = searchParams?.get('topicId') || undefined
       const attemptId = searchParams?.get('attemptId') || undefined
       handleAdaptiveStart(mode === 'mistakes' ? "mistakes" : mode as any, topicId, attemptId)
     }
-  }, [])
+  }, [searchParams]) // searchParams only, NOT handleAdaptiveStart
 
 
   // Auto-scroll logic and adaptive difficulty calculation
